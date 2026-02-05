@@ -1,0 +1,34 @@
+# --- Python & Ambientes Virtuais ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+*.log
+
+# --- Sistema Operacional & IDEs ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Server (Raspberry Pi) ---
+# Ignorar configuração local (contém Latitude/Longitude privadas)
+server/config.json
+
+# Ignorar ícones baixados dinamicamente (economiza espaço)
+server/icons/
+
+# Ignorar imagens geradas temporariamente durante testes
+server/*.png
+server/dashboard.png
+
+# --- Kindle ---
+# Ignorar o binário (Boas práticas recomendam não versionar binários compilados)
+# Se quiser facilitar para quem baixar, remova a linha abaixo:
+kindle/fbink
+
+# Ignorar imagens temporárias baixadas no Kindle (se rodar testes locais)
+kindle/*.png

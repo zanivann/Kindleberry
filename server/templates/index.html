@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Config Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; background: #eee; }
+        .box { background: #fff; padding: 20px; border-radius: 8px; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 8px; margin: 5px 0 15px 0; display: block; }
+        .check-group { margin: 15px 0; }
+        button { background: #333; color: #fff; padding: 10px; width: 100%; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>Configurações</h2>
+        <form action="/update" method="POST">
+            
+            <label>Nome da Cidade</label>
+            <input type="text" name="city_name" value="{{ config.city_name }}">
+
+            <label>Fuso Horário (TZ Database Name)</label>
+            <input type="text" name="timezone" value="{{ config.timezone }}" placeholder="Ex: America/Sao_Paulo">
+
+            <div class="check-group">
+                <label>
+                    <input type="checkbox" name="dark_mode" {% if config.dark_mode %}checked{% endif %}>
+                    🌙 Modo Noturno (Dark Mode)
+                </label>
+            </div>
+
+            <label>Tamanho da Fonte (Hora)</label>
+            <input type="number" name="font_size" value="{{ config.font_size }}">
+
+            <label>Rotação</label>
+            <select name="rotation">
+                <option value="0" {% if config.rotation == 0 %}selected{% endif %}>Retrato</option>
+                <option value="1" {% if config.rotation == 1 %}selected{% endif %}>Paisagem (Padrão)</option>
+            </select>
+
+            <label>Latitude / Longitude</label>
+            <input type="text" name="lat" value="{{ config.lat }}">
+            <input type="text" name="lon" value="{{ config.lon }}">
+
+            <button type="submit">Salvar</button>
+        </form>
+    </div>
+</body>
+</html>

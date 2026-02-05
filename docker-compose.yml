@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  rpi-dash:
+    build: ./server
+    container_name: rpi_kindle_dash
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    privileged: true  # Necessário para ler sensores de hardware no RPi
