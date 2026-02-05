@@ -1,6 +1,7 @@
 #!/bin/sh
 
 # CONFIG
+VERSION="v1.0.0"
 IP_RPI="192.168.0.249"
 FBINK="/mnt/us/extensions/kindleberry/fbink"
 URL="http://$IP_RPI:5000/dashboard.png"
