@@ -55,8 +55,8 @@ kindleberry/
     ├── menu.json            # Configuração do botão KUAL
     └── fbink                # Binário executável
 
-
-    ## 🚀 Instalação: Servidor (Raspberry Pi)
+```
+## 🚀 Instalação: Servidor (Raspberry Pi)
 
 1.  **Prepare o Diretório:**
     No seu Raspberry Pi, crie a pasta do projeto e a estrutura necessária:
@@ -113,7 +113,7 @@ Crie os arquivos abaixo dentro da pasta `/mnt/us/extensions/kindleberry/`.
 
 #### A. `show_dash.sh` (Script Principal)
 Este script faz o loop infinito: busca a bateria local, baixa a imagem do servidor enviando a bateria na URL e atualiza a tela.
-
+```
 > **⚠️ Importante:** Edite a variável `IP_RPI` com o endereço IP do seu servidor.
 
 ```bash
@@ -144,7 +144,7 @@ while true; do
     # Ciclo de atualização (em segundos)
     sleep 5
 done
-
+```
 #### B. `stop_dash.sh` (Script de Parada)
 Encerra o processo do dashboard, limpa a tela e devolve o controle de energia ao sistema (permitindo que o Kindle hiberne novamente).
 
@@ -154,7 +154,7 @@ killall show_dash.sh
 # Devolve o controle do descanso de tela ao sistema (Power Management)
 lipc-set-prop com.lab126.powerd preventScreenSaver 0
 /mnt/us/extensions/kindleberry/fbink -c -f -q "Dashboard Parado"
-
+```
 #### C. `menu.json` (Menu do KUAL)
 Define a estrutura do botão dentro do KUAL. Cria uma pasta "KindleBerry" com opções para iniciar e parar o dashboard.
 
@@ -183,13 +183,13 @@ Define a estrutura do botão dentro do KUAL. Cria uma pasta "KindleBerry" com op
         }
     ]
 }
-
+```
 ### 4. Permissões Finais
 Para que o KUAL consiga executar os scripts e ler os arquivos, precisamos garantir permissão total na pasta:
 
 ```bash
 chmod 777 /mnt/us/extensions/kindleberry/*
-
+```
 ## 🎮 Como Usar
 
 1.  No Kindle, abra o **KUAL**.
