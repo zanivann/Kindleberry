@@ -10,8 +10,9 @@ from flask import Flask, send_file, request, render_template, redirect
 from PIL import Image, ImageDraw, ImageFont
 
 app = Flask(__name__)
-SERVER_VERSION = "1.0.2"
+SERVER_VERSION = "1.0.3"
 CONFIG_FILE = 'config.json'
+DASH_ACTIVE = True  # Variável de controle do sistema
 
 # --- GLOBAIS ---
 last_net_io = None
@@ -23,7 +24,7 @@ DEFAULT_CONFIG = {
     "rotation": 1,
     "font_size": 120,
     "city_name": "Sao Paulo",
-    "timezone": "America/Sao_Paulo", # NOVO: Fuso Horário Padrão
+    "timezone": "America/Sao_Paulo",
     "lat": "-23.5505",
     "lon": "-46.6333",
     "dark_mode": False
@@ -42,15 +43,13 @@ def load_config():
 def save_config(data):
     with open(CONFIG_FILE, 'w') as f: json.dump(data, f, indent=4)
 
-# --- NOVO: Configura Fuso Horário ---
 def setup_timezone():
-    # Lê a config e aplica na variável de ambiente do sistema
     conf = load_config()
     tz = conf.get('timezone', 'UTC')
     os.environ['TZ'] = tz
     try:
-        time.tzset() # Força o Python a atualizar o fuso (Funciona em Linux/RPi)
-    except: pass     # Ignora se for Windows
+        time.tzset()
+    except: pass
 
 def get_ip():
     try:
@@ -166,7 +165,6 @@ def get_weather(lat, lon):
 
 @app.route('/dashboard.png')
 def serve_dashboard():
-    # Atualiza o TZ antes de gerar a imagem
     setup_timezone()
     conf = load_config()
     W, H = 1448, 1072
@@ -242,23 +240,36 @@ def serve_dashboard():
     buf.seek(0)
     return send_file(buf, mimetype='image/png')
 
-@app.route('/')
-def index(): return render_template('index.html', config=load_config())
-
 @app.route('/update', methods=['POST'])
 def update():
     c = load_config()
     c['rotation'] = int(request.form.get('rotation'))
     c['font_size'] = int(request.form.get('font_size'))
     c['city_name'] = request.form.get('city_name')
-    c['timezone'] = request.form.get('timezone') # Salva o Timezone
+    c['timezone'] = request.form.get('timezone')
     c['lat'] = request.form.get('lat')
     c['lon'] = request.form.get('lon')
     c['dark_mode'] = 'dark_mode' in request.form
     save_config(c)
-    setup_timezone() # Aplica imediatamente
+    setup_timezone()
     return redirect('/')
 
+# --- ROTAS DE CONTROLE REMOTO ---
+@app.route('/check_status')
+def check_status():
+    return "RUN" if DASH_ACTIVE else "STOP"
+
+@app.route('/toggle_status', methods=['POST'])
+def toggle_status():
+    global DASH_ACTIVE
+    DASH_ACTIVE = not DASH_ACTIVE
+    return redirect('/')
+
+@app.route('/')
+def index(): 
+    # Rota única e correta
+    return render_template('index.html', config=load_config(), dash_active=DASH_ACTIVE)
+
 if __name__ == '__main__':
-    setup_timezone() # Aplica ao iniciar
+    setup_timezone()
     app.run(host='0.0.0.0', port=5000)

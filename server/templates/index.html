@@ -5,13 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; background: #eee; }
-        .box { background: #fff; padding: 20px; border-radius: 8px; }
-        input[type="text"], input[type="number"], select { width: 100%; padding: 8px; margin: 5px 0 15px 0; display: block; }
+        .box { background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 8px; margin: 5px 0 15px 0; display: block; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
         .check-group { margin: 15px 0; }
-        button { background: #333; color: #fff; padding: 10px; width: 100%; border: none; cursor: pointer; }
+        .btn-save { background: #333; color: #fff; padding: 10px; width: 100%; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; }
+        .btn-save:hover { background: #555; }
+        
+        /* Estilos do Controle Mestre */
+        .status-box { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 20px; }
+        .btn-toggle { padding: 15px 30px; font-size: 18px; border: none; border-radius: 5px; cursor: pointer; color: white; width: 100%; font-weight: bold; transition: background 0.2s; }
+        .status-text { font-size: 1.2em; margin-bottom: 15px; display: block; }
     </style>
 </head>
 <body>
+
+    <div class="box status-box">
+        <h2>Controle do Sistema</h2>
+        
+        <span class="status-text">
+            Status: <strong>{{ '🟢 RODANDO' if dash_active else '🔴 PARADO' }}</strong>
+        </span>
+    
+        <form action="/toggle_status" method="POST">
+            <button type="submit" class="btn-toggle" style="background-color: {{ '#d9534f' if dash_active else '#5cb85c' }};">
+                {{ 'PARAR TUDO' if dash_active else 'INICIAR SISTEMA' }}
+            </button>
+        </form>
+        <p style="color: #666; font-size: 0.9em; margin-top: 10px;">
+            <small>Ao parar, todos os Kindles encerrarão seus scripts automaticamente na próxima atualização.</small>
+        </p>
+    </div>
+
     <div class="box">
         <h2>Configurações</h2>
         <form action="/update" method="POST">
@@ -36,14 +60,17 @@
             <select name="rotation">
                 <option value="0" {% if config.rotation == 0 %}selected{% endif %}>Retrato</option>
                 <option value="1" {% if config.rotation == 1 %}selected{% endif %}>Paisagem (Padrão)</option>
+                <option value="2" {% if config.rotation == 2 %}selected{% endif %}>Invertido (180°)</option>
+                <option value="3" {% if config.rotation == 3 %}selected{% endif %}>Retrato Invertido (270°)</option>
             </select>
 
             <label>Latitude / Longitude</label>
             <input type="text" name="lat" value="{{ config.lat }}">
             <input type="text" name="lon" value="{{ config.lon }}">
 
-            <button type="submit">Salvar</button>
+            <button type="submit" class="btn-save">Salvar Configurações</button>
         </form>
     </div>
+
 </body>
 </html>

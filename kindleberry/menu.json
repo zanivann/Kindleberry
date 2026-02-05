@@ -1,16 +1,22 @@
 {
-	"items": [
-	{
-		"name": "Kindleberry",
-		"priority": 0,
-		"items": [
-		{
-			"name": "Start",
-			"priority": 1,
-			"action": "/mnt/us/extensions/kindleberry/show_dash.sh",
-			"exitmenu": true
-		}
-		]
-	}
-	]
+        "items": [
+        {
+                "name": "Kindleberry",
+                "priority": 0,
+                "items": [
+                {
+                        "name": "Start",
+                        "priority": 1,
+                        "action": "/mnt/us/extensions/kindleberry/show_dash.sh",
+                        "exitmenu": true
+                },
+                {
+                        "name": "Stop",
+                        "priority": 2,
+                        "action": "/mnt/us/extensions/kindleberry/stop_dash.sh",
+                        "exitmenu": true
+                }
+                ]
+        }
+        ]
 }
