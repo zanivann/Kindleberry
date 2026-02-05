@@ -10,7 +10,7 @@ from flask import Flask, send_file, request, render_template, redirect
 from PIL import Image, ImageDraw, ImageFont
 
 app = Flask(__name__)
-SERVER_VERSION = "1.0.1"
+SERVER_VERSION = "1.0.2"
 CONFIG_FILE = 'config.json'
 
 # --- GLOBAIS ---
