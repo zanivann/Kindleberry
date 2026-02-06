@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Config Dashboard</title>
+    <title>{{ tr.ui_title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; background: #eee; }
@@ -23,52 +23,58 @@
         <h2>Controle do Sistema</h2>
         
         <span class="status-text">
-            Status: <strong>{{ '🟢 RODANDO' if dash_active else '🔴 PARADO' }}</strong>
+            Status: <strong>{{ tr.ui_status_run if dash_active else tr.ui_status_stop }}</strong>
         </span>
     
         <form action="/toggle_status" method="POST">
             <button type="submit" class="btn-toggle" style="background-color: {{ '#d9534f' if dash_active else '#5cb85c' }};">
-                {{ 'PARAR TUDO' if dash_active else 'INICIAR SISTEMA' }}
+                {{ tr.ui_btn_stop if dash_active else tr.ui_btn_start }}
             </button>
         </form>
         <p style="color: #666; font-size: 0.9em; margin-top: 10px;">
-            <small>Ao parar, todos os Kindles encerrarão seus scripts automaticamente na próxima atualização.</small>
+            <small>{{ tr.ui_warn_stop }}</small>
         </p>
     </div>
 
     <div class="box">
-        <h2>Configurações</h2>
+        <h2>{{ tr.ui_title }}</h2>
         <form action="/update" method="POST">
             
-            <label>Nome da Cidade</label>
+            <label>{{ tr.ui_language }}</label>
+            <select name="language">
+                <option value="pt_BR" {% if config.language == 'pt_BR' %}selected{% endif %}>Português (BR)</option>
+                <option value="en_US" {% if config.language == 'en_US' %}selected{% endif %}>English (US)</option>
+            </select>
+
+            <label>{{ tr.ui_city }}</label>
             <input type="text" name="city_name" value="{{ config.city_name }}">
 
-            <label>Fuso Horário (TZ Database Name)</label>
+            <label>{{ tr.ui_timezone }}</label>
             <input type="text" name="timezone" value="{{ config.timezone }}" placeholder="Ex: America/Sao_Paulo">
 
             <div class="check-group">
                 <label>
                     <input type="checkbox" name="dark_mode" {% if config.dark_mode %}checked{% endif %}>
-                    🌙 Modo Noturno (Dark Mode)
+                    {{ tr.ui_dark_mode }}
                 </label>
             </div>
 
-            <label>Tamanho da Fonte (Hora)</label>
+            <label>{{ tr.ui_font_size }}</label>
             <input type="number" name="font_size" value="{{ config.font_size }}">
 
-            <label>Rotação</label>
+            <label>{{ tr.ui_rotation }}</label>
             <select name="rotation">
-                <option value="0" {% if config.rotation == 0 %}selected{% endif %}>Retrato</option>
-                <option value="1" {% if config.rotation == 1 %}selected{% endif %}>Paisagem (Padrão)</option>
+                <option value="0" {% if config.rotation == 0 %}selected{% endif %}>{{ tr.ui_opt_portrait }}</option>
+                <option value="1" {% if config.rotation == 1 %}selected{% endif %}>{{ tr.ui_opt_landscape }} (Padrão)</option>
                 <option value="2" {% if config.rotation == 2 %}selected{% endif %}>Invertido (180°)</option>
                 <option value="3" {% if config.rotation == 3 %}selected{% endif %}>Retrato Invertido (270°)</option>
             </select>
 
-            <label>Latitude / Longitude</label>
+            <label>{{ tr.ui_lat_lon }}</label>
             <input type="text" name="lat" value="{{ config.lat }}">
             <input type="text" name="lon" value="{{ config.lon }}">
 
-            <button type="submit" class="btn-save">Salvar Configurações</button>
+            <button type="submit" class="btn-save">{{ tr.ui_save }}</button>
         </form>
     </div>
 
