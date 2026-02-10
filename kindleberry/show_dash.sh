@@ -1,14 +1,15 @@
 #!/bin/sh
 # --- Configuração ---
-VERSION="v1.1.0 (Remote Ctrl)"
+VERSION="v1.2.0 (Luminosity Sync)"
 IP_RPI="192.168.0.XXX"  # <--- SEU IP AQUI
 FBINK="/mnt/us/extensions/kindleberry/fbink"
 URL_BASE="http://$IP_RPI:5000"
 IMG_URL="$URL_BASE/dashboard.png"
 STATUS_URL="$URL_BASE/check_status"
 OUTPUT="/tmp/dashboard.png"
+HEADERS="/tmp/dash.headers"
 
-# Configuração do Refresh Híbrido
+# Configuração do Refresh Híbrido (Flash a cada X atualizações)
 REFRESH_LIMIT=10  
 COUNT=0
 
@@ -23,22 +24,29 @@ while true; do
     STATUS=$(wget -q -O - "$STATUS_URL")
     
     if [ "$STATUS" == "STOP" ]; then
-        # --- MENSAGEM ATUALIZADA AQUI ---
-        # O \n tenta quebrar a linha, mas dependendo da versão do fbink pode ficar na mesma linha.
-        # O importante é a instrução.
         $FBINK -c -f -q "Encerrado pelo Servidor. Clique aqui para fechar."
-        
-        # Devolve controle de energia
         lipc-set-prop com.lab126.powerd preventScreenSaver 0
-        
-        # Encerra o script
         exit 0
     fi
 
-    # 2. Se o status for "RUN", continua
+    # 2. Busca bateria local
     BAT=$(lipc-get-prop com.lab126.powerd capacity)
     
-    if wget -q -T 3 -O "$OUTPUT" "$IMG_URL?kbat=$BAT"; then
+    # 3. Download da Imagem + Captura de Headers (Brilho)
+    # Usamos curl -D para salvar os headers no arquivo /tmp/dash.headers
+    if curl -s -m 5 -D "$HEADERS" -o "$OUTPUT" "$IMG_URL?kbat=$BAT"; then
+        
+        # --- LÓGICA DE LUMINOSIDADE ---
+        # Extrai o valor do header X-Brightness enviado pelo Python
+        NEW_BRIGHT=$(grep -i "X-Brightness:" "$HEADERS" | awk '{print $2}' | tr -d '\r')
+        
+        if [ "$NEW_BRIGHT" != "" ]; then
+            # Aplica o brilho ao hardware do Kindle (0 a 24)
+            lipc-set-prop com.lab126.powerd flIntensity "$NEW_BRIGHT"
+        fi
+        # ------------------------------
+
+        # 4. Atualização da Tela (Híbrida)
         if [ $COUNT -ge $REFRESH_LIMIT ]; then
             $FBINK -c -f -g file="$OUTPUT"
             COUNT=0

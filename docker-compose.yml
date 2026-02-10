@@ -1,8 +1,19 @@
-version: '3.8'
 services:
   rpi-dash:
-    build: ./server
+    build: 
+      context: ./server
+      dockerfile: Dockerfile
     container_name: kindleberry
     restart: unless-stopped
     network_mode: host
-    privileged: true  # Necessário para ler sensores de hardware no RPi
+    privileged: true
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/gpiochip4:/dev/gpiochip4" # Essencial para o Pi 5
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /sys:/sys:ro
+      - ./server/icons:/app/icons

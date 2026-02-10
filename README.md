@@ -9,7 +9,10 @@ Um dashboard de alta performance para Kindles (com Jailbreak), transformando o e
 ## ✨ Funcionalidades
 
 * **Monitoramento em Tempo Real:** Uso de CPU, RAM e Tráfego de Rede (Download/Upload com histórico gráfico).
-* **Clima:** Temperatura atual, condição e ícones (Sol, Chuva, Nuvens) via Open-Meteo.
+* **Motor Híbrido de 15s:** Sensor DHT22 lido em segundo plano (thread dedicada). O dashboard entrega a imagem instantaneamente, evitando quedas de Wi-Fi no Kindle por latência de leitura.
+* **Clima:** Temperatura atual, condição e ícones (Sol, Chuva, Nuvens) via Open-Meteo ou via sensor DFT22.
+* **Sincronização de Brilho Real:** Ajuste a luminosidade do Kindle diretamente pela Web UI do Raspberry Pi. O valor (0-24) é enviado via Header HTTP e aplicado ao hardware do e-reader.
+* **Busca Automática de Coordenadas: Botão "📍 Buscar":** integrado na UI que preenche Latitude e Longitude automaticamente via API do OpenStreetMap.
 * **Feedback Bidirecional:** Exibe a bateria do próprio Kindle na tela.
 * **Totalmente Configurável (Web UI):**
     * Alterar nome da cidade.
@@ -44,7 +47,11 @@ kindleberry/
 │   ├── Dockerfile
 │   ├── docker-compose.yml
 │   ├── main.py
+│   ├── dht_reader.py        # Driver do sensor
 │   ├── requirements.txt
+│   ├── config.json          # Configurações de brilho e clima
+│   ├── locale/              # Ficheiros .json de tradução
+│   ├── icons/               # Ícones de clima e lua (.png)
 │   ├── fonts/               # Coloque sua fonte .ttf aqui
 │   └── templates/
 │       └── index.html
@@ -120,29 +127,26 @@ Este script faz o loop infinito: busca a bateria local, baixa a imagem do servid
 #!/bin/sh
 IP_RPI="192.168.0.XXX" 
 FBINK="/mnt/us/extensions/kindleberry/fbink"
-URL_BASE="http://$IP_RPI:5000/dashboard.png"
-OUTPUT="/tmp/dashboard.png"
+URL="http://$IP_RPI:5000/dashboard.png"
 
-# Previne descanso de tela e mantém Wi-Fi ativo
+# Previne hibernação
 lipc-set-prop com.lab126.powerd preventScreenSaver 1
-lipc-set-prop com.lab126.cmd wirelessEnable 1
-
-$FBINK -c -f -m -q "Carregando..."
 
 while true; do
-    # Pega bateria (0-100) e envia via GET para o servidor
     BAT=$(lipc-get-prop com.lab126.powerd capacity)
     
-    # Timeout curto (3s) para não travar o loop
-    if wget -q -T 3 -O "$OUTPUT" "$URL_BASE?kbat=$BAT"; then
-        # -f: Flash na tela para limpar "ghosting" (resíduos anteriores)
-        $FBINK -c -f -g file="$OUTPUT"
-    else
-        $FBINK -c -q "Erro Conexao..."
-        lipc-set-prop com.lab126.cmd wirelessEnable 1
+    # Baixa imagem e salva os cabeçalhos HTTP
+    curl -s -D /tmp/headers.txt -o /tmp/dash.png "$URL?kbat=$BAT"
+    
+    # Extrai o brilho real (X-Brightness) e aplica ao hardware
+    BRIGHT=$(grep -i "X-Brightness:" /tmp/headers.txt | awk '{print $2}' | tr -d '\r')
+    if [ ! -z "$BRIGHT" ]; then
+        lipc-set-prop com.lab126.powerd intensity "$BRIGHT"
     fi
-    # Ciclo de atualização (em segundos)
-    sleep 5
+
+    # Renderiza com Flash Refresh
+    $FBINK -c -f -g file=/tmp/dash.png
+    sleep 10
 done
 ```
 #### B. `stop_dash.sh` (Script de Parada)

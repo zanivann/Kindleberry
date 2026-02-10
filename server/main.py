@@ -7,74 +7,73 @@ import time
 import json
 import os
 import glob
-import math
+import threading
+import traceback
 from flask import Flask, send_file, request, render_template, redirect
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-app = Flask(__name__)
-SERVER_VERSION = "1.3.1"
-CONFIG_FILE = 'config.json'
+# --- ESTADO GLOBAL ---
+latest_sensor_data = {"temp": "--", "hum": "--"}
 DASH_ACTIVE = True
-CURRENT_LANG = {} # Dicionário que guarda as traduções carregadas
-
-# --- GLOBAIS ---
-last_net_io = None
-last_net_time = 0
-net_history = [] 
+CURRENT_LANG = {} 
+last_net_io, last_net_time, net_history = None, 0, []
 MAX_HISTORY = 120 
 
-DEFAULT_CONFIG = {
-    "language": "pt_BR",
-    "rotation": 1,
-    "font_size": 120,
-    "city_name": "Sao Paulo",
-    "timezone": "America/Sao_Paulo",
-    "lat": "-23.5505",
-    "lon": "-46.6333",
-    "dark_mode": False
-}
+try:
+    from dht_reader import DHTReader
+    sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 4)
+except Exception:
+    sensor_client = None
 
+def update_sensor_background():
+    global latest_sensor_data
+    while True:
+        if sensor_client:
+            try:
+                h, t_val, _ = sensor_client.read_data()
+                if t_val is not None:
+                    latest_sensor_data["temp"] = f"{t_val:.1f}"
+                    latest_sensor_data["hum"] = f"{h:.1f}"
+            except Exception: pass
+        time.sleep(15)
+
+app = Flask(__name__)
+CONFIG_FILE = 'config.json'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# --- UTILITÁRIOS ---
 def load_config():
-    if not os.path.exists(CONFIG_FILE): return DEFAULT_CONFIG
+    default = {
+        "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", 
+        "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", 
+        "dark_mode": False, "weather_source": "online", "brightness": 10
+    }
+    if not os.path.exists(CONFIG_FILE): return default
     try:
         with open(CONFIG_FILE, 'r') as f:
             c = json.load(f)
-            for k, v in DEFAULT_CONFIG.items():
+            for k, v in default.items():
                 if k not in c: c[k] = v
             return c
-    except: return DEFAULT_CONFIG
+    except: return default
 
 def save_config(data):
     with open(CONFIG_FILE, 'w') as f: json.dump(data, f, indent=4)
 
-# --- SISTEMA DE TRADUÇÃO ---
 def load_translation_file():
     global CURRENT_LANG
     conf = load_config()
-    lang_code = conf.get('language', 'pt_BR')
-    
-    path = f"locale/{lang_code}.json"
-    if not os.path.exists(path):
-        path = "locale/pt_BR.json" # Fallback
-        
+    lang = conf.get('language', 'pt_BR')
+    path = os.path.join(BASE_DIR, 'locale', f'{lang}.json')
+    if not os.path.exists(path): path = os.path.join(BASE_DIR, 'locale', 'pt_BR.json')
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            CURRENT_LANG = json.load(f)
-    except:
-        CURRENT_LANG = {}
+        with open(path, 'r', encoding='utf-8') as f: CURRENT_LANG = json.load(f)
+    except: CURRENT_LANG = {}
+    return CURRENT_LANG
 
-def t(key):
-    """Retorna o texto traduzido ou a própria chave se não encontrar"""
-    return CURRENT_LANG.get(key, key)
+def t(key): return CURRENT_LANG.get(key, key)
 
-def setup_timezone():
-    conf = load_config()
-    tz = conf.get('timezone', 'UTC')
-    os.environ['TZ'] = tz
-    try:
-        time.tzset()
-    except: pass
-
+# --- HARDWARE E ASTRONOMIA ---
 def get_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -82,291 +81,196 @@ def get_ip():
         return s.getsockname()[0]
     except: return "Offline"
 
-# --- ASTRONOMIA ---
-def get_moon_phase():
-    try:
-        now = datetime.datetime.now()
-        ref_date = datetime.datetime(2000, 1, 6, 18, 14, 0)
-        diff = now - ref_date
-        days = diff.total_seconds() / 86400
-        lunation = 29.53058867
-        moon_age = days % lunation
-        index = int((moon_age / lunation) * 8) % 8
-        
-        phases = [
-            ("moon_new", "m_new"),
-            ("moon_waxing_crescent", "m_wax_cresc"),
-            ("moon_first_quarter", "m_first_q"),
-            ("moon_waxing_gibbous", "m_wax_gib"),
-            ("moon_full", "m_full"),
-            ("moon_waning_gibbous", "m_wan_gib"),
-            ("moon_last_quarter", "m_last_q"),
-            ("moon_waning_crescent", "m_wan_cresc")
-        ]
-        return phases[index]
-    except:
-        return ("moon_full", "m_full")
-
-# --- HARDWARE ---
 def get_rpi_temp():
     try:
-        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-            return float(f.read()) / 1000.0
-    except:
-        return 0.0
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f: return float(f.read()) / 1000.0
+    except: return 0.0
 
 def get_fan_speed():
     try:
-        fan_files = glob.glob("/sys/class/hwmon/hwmon*/fan1_input")
-        if fan_files:
-            with open(fan_files[0], "r") as f:
-                return int(f.read())
-    except:
-        pass
+        fan_paths = glob.glob("/sys/class/hwmon/hwmon*/fan*_input")
+        for path in fan_paths:
+            with open(path, "r") as f:
+                return int(f.read().strip())
+    except: pass
     return None
 
-# --- REDE ---
+def get_moon_phase():
+    try:
+        diff = datetime.datetime.now() - datetime.datetime(2000, 1, 6, 18, 14, 0)
+        index = int((diff.total_seconds() / 86400 % 29.530588) / 29.530588 * 8) % 8
+        icons = ["moon_new", "moon_waxing_crescent", "moon_first_quarter", "moon_waxing_gibbous", "moon_full", "moon_waning_gibbous", "moon_last_quarter", "moon_waning_crescent"]
+        phases = ["m_new", "m_wax_cresc", "m_first_q", "m_wax_gib", "m_full", "m_wan_gib", "m_last_q", "m_wan_cresc"]
+        return icons[index], phases[index]
+    except: return "moon_full", "m_full"
+
 def update_net_stats():
     global last_net_io, last_net_time, net_history
-    now = time.time()
-    io_now = psutil.net_io_counters()
-    down = 0
-    up = 0
+    now, io_now = time.time(), psutil.net_io_counters()
+    down, up = 0, 0
     if last_net_io:
         dt = now - last_net_time
         if dt > 0:
             down = (io_now.bytes_recv - last_net_io.bytes_recv) / dt / 1024
             up = (io_now.bytes_sent - last_net_io.bytes_sent) / dt / 1024
-    last_net_io = io_now
-    last_net_time = now
+    last_net_io, last_net_time = io_now, now
     net_history.append((down, up))
-    if len(net_history) > MAX_HISTORY:
-        net_history.pop(0)
+    if len(net_history) > MAX_HISTORY: net_history.pop(0)
     return down, up
 
-# --- DESENHO ---
-def draw_sparkline(draw, x, y, w, h, data, label, font_val, font_axis, color):
-    draw.line((x, y+h, x+w, y+h), fill=color, width=2)
-    step_x = w / (MAX_HISTORY - 1) if MAX_HISTORY > 1 else w
-    for i in range(0, 5):
-        pos_idx = i * (MAX_HISTORY / 4)
-        px = x + (pos_idx * step_x)
-        draw.line((px, y+h, px, y+h+8), fill=color, width=2)
-    
-    draw.text((x, y+h+10), "-10m", font=font_axis, fill=color)
-    draw.text((x + (w/2), y+h+10), "-5m", font=font_axis, fill=color, anchor="mt")
-    draw.text((x+w, y+h+10), t('lbl_now'), font=font_axis, fill=color, anchor="rt")
-
-    if not data: return
-    max_val = max(data) if max(data) > 10 else 10
-    
-    points = []
-    for i, val in enumerate(data):
-        px = x + (i * step_x)
-        py = (y + h) - ((val / max_val) * h)
-        points.append((px, py))
-    
-    if len(points) > 1:
-        draw.line(points, fill=color, width=3)
+# --- NOVO MOTOR DE CLIMA (WEATHERAPI.COM) ---
+def get_weather(lat, lon):
+    API_KEY = "4df7b3293f31480b96c115457261002"
+    try:
+        url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={lat},{lon}&lang=pt"
+        r = requests.get(url, timeout=3).json()
         
-    curr = data[-1] if data else 0
-    if curr > 1024: val_str = f"{curr/1024:.1f} MB/s"
-    else: val_str = f"{int(curr)} KB/s"
-    draw.text((x, y-35), f"{label}: {val_str}", font=font_val, fill=color)
+        curr = r['current']
+        temp = curr['temp_c']
+        cond_text = curr['condition']['text']
+        code = curr['condition']['code']
+        is_day = curr['is_day']
+
+        # Mapeamento de códigos para seus arquivos na pasta /icons/
+        icon_map = {
+            1000: "sun",            # Limpo
+            1003: "cloudy_sun",     # Parcialmente nublado
+            1006: "cloudy",         # Nublado
+            1009: "cloudy",         # Encoberto
+            1030: "mist",           # Névoa
+            1063: "rain_light",     # Chuva esparsa
+            1183: "rain_light",     # Chuva leve
+            1189: "rain",           # Chuva moderada
+            1195: "rain_heavy",     # Chuva forte
+            1240: "rain_light",     # Aguaceiros
+            1273: "storm",          # Trovoadas
+        }
+        
+        icon_name = icon_map.get(code, "cloudy")
+        
+        # Ajuste para Noite
+        if is_day == 0:
+            if icon_name == "sun": icon_name = "moon"
+            if icon_name == "cloudy_sun": icon_name = "cloudy_moon"
+            
+        return temp, cond_text, icon_name, is_day
+    except:
+        return "--", "Erro API", "cloudy", 1
+
+# --- FUNÇÕES DE DESENHO ---
+def draw_sparkline(draw, x, y, w, h, data, label, font_val, font_axis, color):
+    draw.line((x, y, x, y+h), fill=color, width=3)
+    draw.line((x, y+h, x+w, y+h), fill=color, width=3)
+    step_x = w / (MAX_HISTORY - 1)
+    if data:
+        max_v = max(data) if max(data) > 10 else 10
+        y_lbl = f"{max_v/1024:.1f}M" if max_v > 1024 else f"{int(max_v)}K"
+        draw.text((x - 10, y), y_lbl, font=font_axis, fill=color, anchor="rm")
+        points = [(x + (i * step_x), (y + h) - ((val / max_v) * h)) for i, val in enumerate(data)]
+        if len(points) > 1: draw.line(points, fill=color, width=3)
+        curr = data[-1]
+        val_str = f"{curr/1024:.1f} MB/s" if curr > 1024 else f"{int(curr)} KB/s"
+        draw.text((x, y-40), f"{label}: {val_str}", font=font_val, fill=color)
 
 def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
-    start = 135
-    end = 405
+    start, end = 135, 405
     curr = start + ((end - start) * (percent / 100))
-    box = [x-radius, y-radius, x+radius, y+radius]
-    draw.arc(box, start=start, end=end, fill=color, width=3)
-    draw.arc(box, start=start, end=curr, fill=color, width=14)
+    draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=end, fill=color, width=3)
+    draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16)
     draw.text((x, y), f"{int(percent)}%", font=font_val, fill=color, anchor="mm")
-    draw.text((x, y+radius+35), label, font=font_label, fill=color, anchor="mm")
+    draw.text((x, y+radius+40), label, font=font_label, fill=color, anchor="mm")
 
-def draw_kindle_battery(draw, x, y, level, font, color):
-    w, h = 60, 30
-    draw.rectangle([x, y, x+w, y+h], outline=color, width=3)
-    draw.rectangle([x+w, y+8, x+w+4, y+h-8], fill=color)
-    fill_w = (w-6) * (level / 100)
-    draw.rectangle([x+3, y+3, x+3+fill_w, y+h-3], fill=color)
-    draw.text((x-10, y+h/2), f"K: {level}%", font=font, fill=color, anchor="rm")
-
-def ensure_icon(icon_name):
-    icon_map = {
-        "sun": "https://openweathermap.org/img/wn/01d@4x.png",
-        "cloudy": "https://openweathermap.org/img/wn/03d@4x.png",
-        "fog": "https://openweathermap.org/img/wn/50d@4x.png",
-        "rain": "https://openweathermap.org/img/wn/10d@4x.png",
-        "storm": "https://openweathermap.org/img/wn/11d@4x.png",
-        "snow": "https://openweathermap.org/img/wn/13d@4x.png"
-    }
-    path = f"icons/{icon_name}.png"
-    if not os.path.exists("icons"): os.makedirs("icons")
-    if not os.path.exists(path):
-        try:
-            r = requests.get(icon_map.get(icon_name, icon_map["cloudy"]))
-            with open(path, 'wb') as f: f.write(r.content)
-        except: return None
-    return path
-
-def get_weather(lat, lon):
-    try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&timezone=auto"
-        r = requests.get(url, timeout=2).json()
-        w = r['current_weather']
-        code = w['weathercode']
-        icon = "cloudy"
-        if code == 0: icon = "sun"
-        elif code <= 3: icon = "cloudy"
-        elif code <= 48: icon = "fog"
-        elif code <= 67: icon = "rain"
-        elif code > 80: icon = "storm"
-        
-        status_key = "w_cloudy"
-        if code == 0: status_key = "w_sun"
-        elif code < 3: status_key = "w_cloudy"
-        elif code < 50: status_key = "w_fog"
-        elif code < 80: status_key = "w_rain"
-        elif code > 80: status_key = "w_snow"
-        if code > 95: status_key = "w_storm"
-
-        return w['temperature'], status_key, ensure_icon(icon)
-    except: return "--", "w_cloudy", None
-
+# --- ROTA DA IMAGEM ---
 @app.route('/dashboard.png')
 def serve_dashboard():
-    setup_timezone()
-    load_translation_file()
-    conf = load_config()
-    
-    W, H = 1448, 1072
-    BG = 0 if conf.get('dark_mode') else 255
-    FG = 255 if conf.get('dark_mode') else 0
-    img = Image.new('L', (W, H), BG)
-    draw = ImageDraw.Draw(img)
-
     try:
-        f_huge = ImageFont.truetype("fonts/Roboto-Bold.ttf", conf['font_size'])
-        f_city = ImageFont.truetype("fonts/Roboto-Bold.ttf", 90)
-        f_big  = ImageFont.truetype("fonts/Roboto-Bold.ttf", 60)
-        f_med  = ImageFont.truetype("fonts/Roboto-Bold.ttf", 40)
-        f_graph= ImageFont.truetype("fonts/Roboto-Bold.ttf", 28)
-        f_small= ImageFont.truetype("fonts/Roboto-Bold.ttf", 24)
-        f_tiny = ImageFont.truetype("fonts/Roboto-Bold.ttf", 20)
-    except:
-        f_huge = ImageFont.load_default()
-        f_city = f_big = f_med = f_graph = f_small = f_tiny = f_huge
+        conf, tr_data = load_config(), load_translation_file()
+        W, H = 1448, 1072
+        BG, FG = (0, 255) if conf.get('dark_mode') else (255, 0)
+        img = Image.new('L', (W, H), BG)
+        draw = ImageDraw.Draw(img)
 
-    cpu = psutil.cpu_percent()
-    mem = psutil.virtual_memory().percent
-    
-    rpi_temp = get_rpi_temp()
-    fan_rpm = get_fan_speed()
-    moon_icon_name, moon_key = get_moon_phase() 
+        f_p = os.path.join(BASE_DIR, "fonts", "Roboto-Bold.ttf")
+        f_huge = ImageFont.truetype(f_p, conf.get('font_size', 120))
+        f_city, f_med, f_graph, f_tiny = ImageFont.truetype(f_p, 90), ImageFont.truetype(f_p, 40), ImageFont.truetype(f_p, 28), ImageFont.truetype(f_p, 20)
 
-    update_net_stats()
-    temp, status_key, icon_path = get_weather(conf['lat'], conf['lon'])
-    now = datetime.datetime.now()
-    kbat = request.args.get('kbat', type=int)
-
-    # --- Lógica de Data Traduzida ---
-    day_key = f"day_{now.weekday()}"
-    day_name = t(day_key)
-    date_str = f"{day_name}, {now.strftime('%d/%m')}"
-
-    # ESQUERDA
-    draw.text((60, 60), now.strftime("%H:%M"), font=f_huge, fill=FG)
-    draw.text((60, 220), date_str, font=f_med, fill=FG) # Dia da semana traduzido
-    draw.text((60, 320), conf['city_name'], font=f_city, fill=FG)
-    draw.text((60, 520), f"{temp}°C", font=f_huge, fill=FG)
-    draw.text((60, 680), t(status_key), font=f_med, fill=FG)
-
-    # --- LUA ---
-    moon_path = f"icons/{moon_icon_name}.png"
-    if os.path.exists(moon_path):
-        try:
-            m_icon = Image.open(moon_path).convert("RGBA").resize((80, 80))
-            bg_m = Image.new("RGBA", m_icon.size, (BG, BG, BG, 255))
-            bg_m.alpha_composite(m_icon)
-            final_moon = bg_m.convert("L")
-            if conf.get('dark_mode'):
-                from PIL import ImageOps
-                final_moon = ImageOps.invert(final_moon)
-            
-            draw_x, draw_y = 610, 60
-            img.paste(final_moon, (draw_x, draw_y))
-            draw.text((draw_x + 40, draw_y + 85), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
-        except: pass
-
-    if icon_path:
-        try:
-            icon = Image.open(icon_path).convert("RGBA").resize((300, 300))
-            bg_icon = Image.new("RGBA", icon.size, (BG, BG, BG, 255))
-            bg_icon.alpha_composite(icon)
-            final_icon = bg_icon.convert("L")
-            if conf.get('dark_mode'):
-                from PIL import ImageOps
-                final_icon = ImageOps.invert(final_icon)
-            img.paste(final_icon, (60, 740))
-        except: pass
-
-    draw.line((724, 50, 724, 1022), fill=FG, width=4)
-
-    # DIREITA
-    cx = 724 + (724 // 2)
-    draw_gauge(draw, cx - 180, 250, 130, cpu, t("lbl_cpu"), f_big, f_med, FG)
-    draw_gauge(draw, cx + 180, 250, 130, mem, t("lbl_ram"), f_big, f_med, FG)
-
-    hist_down = [x[0] for x in net_history]
-    hist_up = [x[1] for x in net_history]
-    
-    draw.text((cx, 480), t("lbl_net_title"), font=f_med, fill=FG, anchor="mm")
-    gx, gw, gh = 780, 600, 100
-    draw_sparkline(draw, gx, 530, gw, gh, hist_down, t("lbl_down"), f_graph, f_tiny, FG)
-    draw_sparkline(draw, gx, 730, gw, gh, hist_up, t("lbl_up"), f_graph, f_tiny, FG)
-
-    hw_info = f"{t('lbl_temp_rpi')}: {rpi_temp:.1f}°C"
-    if fan_rpm is not None:
-        hw_info += f"  |  {t('lbl_fan')}: {fan_rpm} RPM"
-    elif rpi_temp > 60:
-        hw_info += f"  |  {t('lbl_fan')}: (N/A)"
+        temp_on, cond_txt, w_icon, is_day = get_weather(conf['lat'], conf['lon'])
+        moon_icon, moon_key = get_moon_phase()
         
-    draw.text((cx, 920), hw_info, font=f_med, fill=FG, anchor="mm")
+        if conf.get('weather_source') == "sensor":
+            temp_v, hum_v, status_txt = latest_sensor_data["temp"], latest_sensor_data["hum"], t("lbl_sensor_local")
+        else:
+            temp_v, hum_v, status_txt = temp_on, None, cond_txt
 
-    ip = get_ip()
-    footer = f"Server: {ip} | Up: {now.strftime('%H:%M:%S')}"
-    draw.text((1400, 1040), footer, font=f_small, fill=FG, anchor="rb")
+        update_net_stats()
+        now = datetime.datetime.now()
 
-    if kbat is not None:
-        draw_kindle_battery(draw, 1350, 60, kbat, f_small, FG)
+        # Desenho Esquerda
+        draw.text((60, 60), now.strftime("%H:%M"), font=f_huge, fill=FG)
+        draw.text((60, 220), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
+        draw.text((60, 320), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
+        draw.text((60, 520), f"{temp_v}°C", font=f_huge, fill=FG)
+        if hum_v and hum_v != "--": draw.text((60, 660), f"{t('lbl_humidity')}: {hum_v}%", font=f_med, fill=FG)
+        draw.text((60, 720) if hum_v else (60, 680), status_txt, font=f_med if not hum_v else f_tiny, fill=FG)
 
-    if conf['rotation'] in [1, 3]: img = img.rotate(90, expand=True)
-    if conf['rotation'] == 2: img = img.rotate(180)
+        # Ícone Lua
+        moon_path = os.path.join(BASE_DIR, "icons", f"{moon_icon}.png")
+        if os.path.exists(moon_path):
+            m_img = Image.open(moon_path).convert("RGBA").resize((100, 100))
+            m_bg = Image.new("RGBA", m_img.size, (BG, BG, BG, 255))
+            m_bg.alpha_composite(m_img)
+            m_final = m_bg.convert("L")
+            if conf.get('dark_mode'): m_final = ImageOps.invert(m_final)
+            img.paste(m_final, (610, 50))
+            draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
 
-    buf = io.BytesIO()
-    img.save(buf, 'PNG')
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png')
+        # Ícone Clima
+        i_path = os.path.join(BASE_DIR, "icons", f"{w_icon}.png")
+        if not os.path.exists(i_path): i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
+        if os.path.exists(i_path):
+            i_img = Image.open(i_path).convert("RGBA").resize((320, 320))
+            i_bg = Image.new("RGBA", i_img.size, (BG, BG, BG, 255))
+            i_bg.alpha_composite(i_img)
+            i_final = i_bg.convert("L")
+            if conf.get('dark_mode'): i_final = ImageOps.invert(i_final)
+            img.paste(i_final, (60, 740))
+
+        # Desenho Direita
+        draw.line((724, 50, 724, 1022), fill=FG, width=4)
+        cx = 1086
+        draw_gauge(draw, cx - 180, 250, 130, psutil.cpu_percent(), t("lbl_cpu"), f_med, f_med, FG)
+        draw_gauge(draw, cx + 180, 250, 130, psutil.virtual_memory().percent, t("lbl_ram"), f_med, f_med, FG)
+        draw_sparkline(draw, 780, 530, 600, 100, [x[0] for x in net_history], t("lbl_down"), f_graph, f_tiny, FG)
+        draw_sparkline(draw, 780, 730, 600, 100, [x[1] for x in net_history], t("lbl_up"), f_graph, f_tiny, FG)
+
+        fan_rpm = get_fan_speed()
+        hw_info = f"CPU: {get_rpi_temp():.1f}°C"
+        if fan_rpm is not None: hw_info += f" | FAN: {fan_rpm} RPM"
+        draw.text((cx, 920), hw_info, font=f_med, fill=FG, anchor="mm")
+        draw.text((1400, 1040), f"IP: {get_ip()} | {now.strftime('%H:%M:%S')}", font=f_tiny, fill=FG, anchor="rb")
+
+        if conf.get('rotation') in [1, 3]: img = img.rotate(90, expand=True)
+        elif conf['rotation'] == 2: img = img.rotate(180)
+        
+        buf = io.BytesIO()
+        img.save(buf, 'PNG'); buf.seek(0)
+
+        response = send_file(buf, mimetype='image/png')
+        response.headers['X-Brightness'] = str(conf.get('brightness', 10))
+        return response
+    except:
+        traceback.print_exc()
+        return "Erro", 500
 
 @app.route('/update', methods=['POST'])
 def update():
     c = load_config()
-    c['language'] = request.form.get('language')
-    c['rotation'] = int(request.form.get('rotation'))
-    c['font_size'] = int(request.form.get('font_size'))
-    c['city_name'] = request.form.get('city_name')
-    c['timezone'] = request.form.get('timezone')
-    c['lat'] = request.form.get('lat')
-    c['lon'] = request.form.get('lon')
-    c['dark_mode'] = 'dark_mode' in request.form
-    save_config(c)
-    setup_timezone()
-    return redirect('/')
-
-@app.route('/check_status')
-def check_status():
-    return "RUN" if DASH_ACTIVE else "STOP"
+    for k in ['city_name', 'timezone', 'lat', 'lon']:
+        if k in request.form: c[k] = request.form[k]
+    if 'brightness' in request.form: c['brightness'] = int(request.form['brightness'])
+    c['rotation'], c['font_size'] = int(request.form.get('rotation', 1)), int(request.form.get('font_size', 120))
+    c['dark_mode'], c['weather_source'] = 'dark_mode' in request.form, request.form.get('weather_source', 'online')
+    save_config(c); return redirect('/')
 
 @app.route('/toggle_status', methods=['POST'])
 def toggle_status():
@@ -374,12 +278,15 @@ def toggle_status():
     DASH_ACTIVE = not DASH_ACTIVE
     return redirect('/')
 
+@app.route('/check_status')
+def check_status():
+    return "RUN" if DASH_ACTIVE else "STOP"
+
 @app.route('/')
-def index(): 
-    load_translation_file()
-    return render_template('index.html', config=load_config(), dash_active=DASH_ACTIVE, tr=CURRENT_LANG)
+def index():
+    tr_data = load_translation_file()
+    return render_template('index.html', config=load_config(), tr=tr_data, dash_active=DASH_ACTIVE)
 
 if __name__ == '__main__':
-    setup_timezone()
-    load_translation_file()
-    app.run(host='0.0.0.0', port=5000)
+    threading.Thread(target=update_sensor_background, daemon=True).start()
+    app.run(host='0.0.0.0', port=5000, threaded=True)
