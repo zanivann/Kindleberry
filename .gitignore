@@ -19,7 +19,7 @@ Thumbs.db
 server/config.json
 
 # Ignorar ícones baixados dinamicamente (economiza espaço)
-server/icons/
+
 
 # Ignorar imagens geradas temporariamente durante testes
 server/*.png
