@@ -1,19 +1,35 @@
+version: "3.8"
 services:
-  rpi-dash:
-    build: 
-      context: ./server
-      dockerfile: Dockerfile
+  kindleberry:
+    # Como você agora tem o GitHub Actions, o ideal é usar a imagem do GHCR
+    # Se quiser continuar compilando local, mantenha o bloco 'build'
+    image: ghcr.io/zanivann/kindleberry:latest
     container_name: kindleberry
     restart: unless-stopped
-    network_mode: host
     privileged: true
+    # Removido network_mode: host para funcionar com o Traefik
+    networks:
+      - proxy_network
     devices:
       - "/dev/gpiomem:/dev/gpiomem"
-      - "/dev/gpiochip4:/dev/gpiochip4" # Essencial para o Pi 5
+      - "/dev/gpiochip4:/dev/gpiochip4"
     environment:
       - PYTHONUNBUFFERED=1
+      - TZ=America/Sao_Paulo
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
       - /sys:/sys:ro
-      - ./server/icons:/app/icons
+      # CAMINHO ABSOLUTO para os ícones e config (evita sumiço de arquivos)
+      - /DATA/AppData/kindleberry/server/icons:/app/icons
+      - /DATA/AppData/kindleberry/server/config.json:/app/config.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kindleberry.rule=Host(`kindle.zanivann.com.br`)"
+      - "traefik.http.routers.kindleberry.entrypoints=websecure"
+      - "traefik.http.routers.kindleberry.tls=true"
+      - "traefik.http.routers.kindleberry.tls.certresolver=myresolver"
+      - "traefik.http.services.kindleberry.loadbalancer.server.port=5000"
+
+networks:
+  proxy_network:
+    external: true
