@@ -41,6 +41,11 @@ app = Flask(__name__)
 CONFIG_FILE = 'config.json'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Garante que a pasta de ícones existe para o download automático
+ICONS_DIR = os.path.join(BASE_DIR, "icons")
+if not os.path.exists(ICONS_DIR):
+    os.makedirs(ICONS_DIR)
+
 # --- UTILITÁRIOS ---
 def load_config():
     default = {
@@ -130,32 +135,23 @@ def get_weather(lat, lon):
         cond_text = curr['condition']['text']
         code = curr['condition']['code']
         is_day = curr['is_day']
+        icon_url = "https:" + curr['condition']['icon'] # A URL vem sem o 'https:'
 
-        # Mapeamento de códigos para seus arquivos na pasta /icons/
         icon_map = {
-            1000: "sun",            # Limpo
-            1003: "cloudy_sun",     # Parcialmente nublado
-            1006: "cloudy",         # Nublado
-            1009: "cloudy",         # Encoberto
-            1030: "mist",           # Névoa
-            1063: "rain_light",     # Chuva esparsa
-            1183: "rain_light",     # Chuva leve
-            1189: "rain",           # Chuva moderada
-            1195: "rain_heavy",     # Chuva forte
-            1240: "rain_light",     # Aguaceiros
-            1273: "storm",          # Trovoadas
+            1000: "sun", 1003: "cloudy_sun", 1006: "cloudy", 1009: "cloudy",
+            1030: "mist", 1063: "rain_light", 1183: "rain_light", 1189: "rain",
+            1195: "rain_heavy", 1240: "rain_light", 1273: "storm",
         }
         
         icon_name = icon_map.get(code, "cloudy")
         
-        # Ajuste para Noite
         if is_day == 0:
             if icon_name == "sun": icon_name = "moon"
             if icon_name == "cloudy_sun": icon_name = "cloudy_moon"
             
-        return temp, cond_text, icon_name, is_day
+        return temp, cond_text, icon_name, is_day, icon_url
     except:
-        return "--", "Erro API", "cloudy", 1
+        return "--", "Erro API", "cloudy", 1, None
 
 # --- FUNÇÕES DE DESENHO ---
 def draw_sparkline(draw, x, y, w, h, data, label, font_val, font_axis, color):
@@ -194,7 +190,7 @@ def serve_dashboard():
         f_huge = ImageFont.truetype(f_p, conf.get('font_size', 120))
         f_city, f_med, f_graph, f_tiny = ImageFont.truetype(f_p, 90), ImageFont.truetype(f_p, 40), ImageFont.truetype(f_p, 28), ImageFont.truetype(f_p, 20)
 
-        temp_on, cond_txt, w_icon, is_day = get_weather(conf['lat'], conf['lon'])
+        temp_on, cond_txt, w_icon, is_day, w_url = get_weather(conf['lat'], conf['lon'])
         moon_icon, moon_key = get_moon_phase()
         
         if conf.get('weather_source') == "sensor":
@@ -224,9 +220,24 @@ def serve_dashboard():
             img.paste(m_final, (610, 50))
             draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
 
-        # Ícone Clima
+        # Ícone Clima com download automático
         i_path = os.path.join(BASE_DIR, "icons", f"{w_icon}.png")
-        if not os.path.exists(i_path): i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
+        
+        # Se não existe localmente e temos a URL, baixa o ícone da API
+        if not os.path.exists(i_path) and w_url:
+            try:
+                icon_res = requests.get(w_url, timeout=5)
+                if icon_res.status_code == 200:
+                    with open(i_path, 'wb') as f:
+                        f.write(icon_res.content)
+            except:
+                # Se falhar o download, tenta usar o "cloudy.png" como fallback
+                i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
+
+        # Se após a tentativa de download o arquivo (ou o fallback) existir, desenha
+        if not os.path.exists(i_path):
+            i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
+
         if os.path.exists(i_path):
             i_img = Image.open(i_path).convert("RGBA").resize((320, 320))
             i_bg = Image.new("RGBA", i_img.size, (BG, BG, BG, 255))
