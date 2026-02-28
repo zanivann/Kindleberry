@@ -220,10 +220,10 @@ def serve_dashboard():
             img.paste(m_final, (610, 50))
             draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
 
-        # Ícone Clima com download automático
+        # --- Ícone Clima com Busca Inteligente e Fallback ---
         i_path = os.path.join(BASE_DIR, "icons", f"{w_icon}.png")
         
-        # Se não existe localmente e temos a URL, baixa o ícone da API
+        # 1. Tenta baixar da API se não existir localmente
         if not os.path.exists(i_path) and w_url:
             try:
                 icon_res = requests.get(w_url, timeout=5)
@@ -231,13 +231,20 @@ def serve_dashboard():
                     with open(i_path, 'wb') as f:
                         f.write(icon_res.content)
             except:
-                # Se falhar o download, tenta usar o "cloudy.png" como fallback
+                pass
+
+        # 2. Lógica de Fallback: Se o arquivo específico ainda não existir
+        if not os.path.exists(i_path):
+            # Se for um nome composto (ex: cloudy_sun), tenta usar o simplificado (ex: sun)
+            if "_" in w_icon:
+                simple_icon = w_icon.split("_")[-1]
+                i_path = os.path.join(BASE_DIR, "icons", f"{simple_icon}.png")
+            
+            # Se ainda não existir, usa o cloudy.png como última reserva
+            if not os.path.exists(i_path):
                 i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
 
-        # Se após a tentativa de download o arquivo (ou o fallback) existir, desenha
-        if not os.path.exists(i_path):
-            i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
-
+        # 3. Desenho Final do ícone
         if os.path.exists(i_path):
             i_img = Image.open(i_path).convert("RGBA").resize((320, 320))
             i_bg = Image.new("RGBA", i_img.size, (BG, BG, BG, 255))
