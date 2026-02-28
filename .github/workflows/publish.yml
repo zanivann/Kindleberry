@@ -41,7 +41,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./server
           push: true
           # Agora usamos a variável IMAGE_NAME que foi tratada para minúsculo
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
