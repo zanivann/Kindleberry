@@ -8,6 +8,8 @@ services:
     restart: unless-stopped
     privileged: true
     # Removido network_mode: host para funcionar com o Traefik
+    ports:
+      - "5000:5000"
     networks:
       - proxy_network
     devices:
