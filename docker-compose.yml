@@ -1,17 +1,14 @@
 version: "3.8"
 services:
   kindleberry:
-    # Como você agora tem o GitHub Actions, o ideal é usar a imagem do GHCR
-    # Se quiser continuar compilando local, mantenha o bloco 'build'
     image: ghcr.io/zanivann/kindleberry:latest
     container_name: kindleberry
     restart: unless-stopped
     privileged: true
-    # Removido network_mode: host para funcionar com o Traefik
-    ports:
-      - "5000:5000"
     networks:
       - proxy_network
+    ports:
+      - "5000:5000"
     devices:
       - "/dev/gpiomem:/dev/gpiomem"
       - "/dev/gpiochip4:/dev/gpiochip4"
@@ -21,9 +18,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /sys:/sys:ro
-      # CAMINHO ABSOLUTO para os ícones e config (evita sumiço de arquivos)
-      - /DATA/AppData/kindleberry/server/icons:/app/icons
-      - /DATA/AppData/kindleberry/server/config.json:/app/config.json
+      # Mapeamos apenas a pasta raiz. 
+      # Como os ícones e o config estão dentro de /server no Pi, 
+      # eles aparecerão automaticamente em /app no container.
+      - /DATA/AppData/kindleberry/server:/app
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.kindleberry.rule=Host(`kindle.zanivann.com.br`)"
