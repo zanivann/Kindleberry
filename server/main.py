@@ -86,6 +86,15 @@ def get_ip():
         return s.getsockname()[0]
     except: return "Offline"
 
+def get_battery():
+    try:
+        battery = psutil.sensors_battery()
+        if battery is not None:
+            return f"{int(battery.percent)}%"
+        return None
+    except:
+        return None
+
 def get_rpi_temp():
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f: return float(f.read()) / 1000.0
@@ -135,7 +144,7 @@ def get_weather(lat, lon):
         cond_text = curr['condition']['text']
         code = curr['condition']['code']
         is_day = curr['is_day']
-        icon_url = "https:" + curr['condition']['icon'] # A URL vem sem o 'https:'
+        icon_url = "https:" + curr['condition']['icon']
 
         icon_map = {
             1000: "sun", 1003: "cloudy_sun", 1006: "cloudy", 1009: "cloudy",
@@ -180,6 +189,9 @@ def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
 @app.route('/dashboard.png')
 def serve_dashboard():
     try:
+        # Pega a bateria enviada pelo Kindle
+        kindle_bat = request.args.get('kbat')
+
         conf, tr_data = load_config(), load_translation_file()
         W, H = 1448, 1072
         BG, FG = (0, 255) if conf.get('dark_mode') else (255, 0)
@@ -220,31 +232,21 @@ def serve_dashboard():
             img.paste(m_final, (610, 50))
             draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
 
-        # --- Ícone Clima com Busca Inteligente e Fallback ---
+        # --- Ícone Clima ---
         i_path = os.path.join(BASE_DIR, "icons", f"{w_icon}.png")
-        
-        # 1. Tenta baixar da API se não existir localmente
         if not os.path.exists(i_path) and w_url:
             try:
                 icon_res = requests.get(w_url, timeout=5)
                 if icon_res.status_code == 200:
-                    with open(i_path, 'wb') as f:
-                        f.write(icon_res.content)
-            except:
-                pass
+                    with open(i_path, 'wb') as f: f.write(icon_res.content)
+            except: pass
 
-        # 2. Lógica de Fallback: Se o arquivo específico ainda não existir
         if not os.path.exists(i_path):
-            # Se for um nome composto (ex: cloudy_sun), tenta usar o simplificado (ex: sun)
             if "_" in w_icon:
                 simple_icon = w_icon.split("_")[-1]
                 i_path = os.path.join(BASE_DIR, "icons", f"{simple_icon}.png")
-            
-            # Se ainda não existir, usa o cloudy.png como última reserva
-            if not os.path.exists(i_path):
-                i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
+            if not os.path.exists(i_path): i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
 
-        # 3. Desenho Final do ícone
         if os.path.exists(i_path):
             i_img = Image.open(i_path).convert("RGBA").resize((320, 320))
             i_bg = Image.new("RGBA", i_img.size, (BG, BG, BG, 255))
@@ -265,7 +267,13 @@ def serve_dashboard():
         hw_info = f"CPU: {get_rpi_temp():.1f}°C"
         if fan_rpm is not None: hw_info += f" | FAN: {fan_rpm} RPM"
         draw.text((cx, 920), hw_info, font=f_med, fill=FG, anchor="mm")
-        draw.text((1400, 1040), f"IP: {get_ip()} | {now.strftime('%H:%M:%S')}", font=f_tiny, fill=FG, anchor="rb")
+        
+        # Rodapé com IP, Bateria do Kindle e Hora
+        footer_text = f"IP: {get_ip()}"
+        if kindle_bat: footer_text += f" | Kindle: {kindle_bat}%"
+        footer_text += f" | {now.strftime('%H:%M:%S')}"
+        
+        draw.text((1400, 1040), footer_text, font=f_tiny, fill=FG, anchor="rb")
 
         if conf.get('rotation') in [1, 3]: img = img.rotate(90, expand=True)
         elif conf['rotation'] == 2: img = img.rotate(180)
