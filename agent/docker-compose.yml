@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  agent:
+    build: .
+    container_name: kindleberry_agent
+    # Partilha a rede para ler o tráfego (up/down) do host
+    network_mode: "host"
+    # Monta os sensores térmicos e de ventoinhas em modo leitura
+    volumes:
+      - /sys:/sys:ro
+    restart: unless-stopped
