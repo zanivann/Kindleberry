@@ -19,6 +19,11 @@ CURRENT_LANG = {}
 last_net_io, last_net_time, net_history = None, 0, []
 MAX_HISTORY = 120 
 
+# ESTADO DO SLAVE
+slave_data = {
+    "last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "fan": None, "net_history": []
+}
+
 try:
     from dht_reader import DHTReader
     sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 4)
@@ -41,12 +46,9 @@ app = Flask(__name__)
 CONFIG_FILE = 'config.json'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Garante que a pasta de ícones existe para o download automático
 ICONS_DIR = os.path.join(BASE_DIR, "icons")
-if not os.path.exists(ICONS_DIR):
-    os.makedirs(ICONS_DIR)
+if not os.path.exists(ICONS_DIR): os.makedirs(ICONS_DIR)
 
-# --- UTILITÁRIOS ---
 def load_config():
     default = {
         "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", 
@@ -78,22 +80,12 @@ def load_translation_file():
 
 def t(key): return CURRENT_LANG.get(key, key)
 
-# --- HARDWARE E ASTRONOMIA ---
 def get_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         return s.getsockname()[0]
     except: return "Offline"
-
-def get_battery():
-    try:
-        battery = psutil.sensors_battery()
-        if battery is not None:
-            return f"{int(battery.percent)}%"
-        return None
-    except:
-        return None
 
 def get_rpi_temp():
     try:
@@ -102,10 +94,8 @@ def get_rpi_temp():
 
 def get_fan_speed():
     try:
-        fan_paths = glob.glob("/sys/class/hwmon/hwmon*/fan*_input")
-        for path in fan_paths:
-            with open(path, "r") as f:
-                return int(f.read().strip())
+        for path in glob.glob("/sys/class/hwmon/hwmon*/fan*_input"):
+            with open(path, "r") as f: return int(f.read().strip())
     except: pass
     return None
 
@@ -132,32 +122,26 @@ def update_net_stats():
     if len(net_history) > MAX_HISTORY: net_history.pop(0)
     return down, up
 
-# --- NOVO MOTOR DE CLIMA (WEATHERAPI.COM) ---
 def get_weather(lat, lon):
     API_KEY = "4df7b3293f31480b96c115457261002"
     try:
         url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={lat},{lon}&lang=pt"
         r = requests.get(url, timeout=3).json()
-        
         curr = r['current']
         temp = curr['temp_c']
         cond_text = curr['condition']['text']
         code = curr['condition']['code']
         is_day = curr['is_day']
         icon_url = "https:" + curr['condition']['icon']
-
         icon_map = {
             1000: "sun", 1003: "cloudy_sun", 1006: "cloudy", 1009: "cloudy",
             1030: "mist", 1063: "rain_light", 1183: "rain_light", 1189: "rain",
             1195: "rain_heavy", 1240: "rain_light", 1273: "storm",
         }
-        
         icon_name = icon_map.get(code, "cloudy")
-        
         if is_day == 0:
             if icon_name == "sun": icon_name = "moon"
             if icon_name == "cloudy_sun": icon_name = "cloudy_moon"
-            
         return temp, cond_text, icon_name, is_day, icon_url
     except:
         return "--", "Erro API", "cloudy", 1, None
@@ -175,21 +159,34 @@ def draw_sparkline(draw, x, y, w, h, data, label, font_val, font_axis, color):
         if len(points) > 1: draw.line(points, fill=color, width=3)
         curr = data[-1]
         val_str = f"{curr/1024:.1f} MB/s" if curr > 1024 else f"{int(curr)} KB/s"
-        draw.text((x, y-40), f"{label}: {val_str}", font=font_val, fill=color)
+        draw.text((x, y-35), f"{label}: {val_str}", font=font_val, fill=color)
 
 def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
     start, end = 135, 405
     curr = start + ((end - start) * (percent / 100))
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=end, fill=color, width=3)
-    draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16)
+    draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16 if radius > 100 else 8)
     draw.text((x, y), f"{int(percent)}%", font=font_val, fill=color, anchor="mm")
-    draw.text((x, y+radius+40), label, font=font_label, fill=color, anchor="mm")
+    draw.text((x, y+radius+35), label, font=font_label, fill=color, anchor="mm")
 
-# --- ROTA DA IMAGEM ---
+# --- ROTAS ---
+@app.route('/report', methods=['POST'])
+def report():
+    global slave_data
+    if request.is_json:
+        data = request.get_json()
+        slave_data["cpu"] = data.get("cpu", 0)
+        slave_data["ram"] = data.get("ram", 0)
+        slave_data["temp"] = data.get("temp", 0.0)
+        slave_data["fan"] = data.get("fan")
+        slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
+        if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
+        slave_data["last_seen"] = time.time()
+    return "OK"
+
 @app.route('/dashboard.png')
 def serve_dashboard():
     try:
-        # Pega a bateria enviada pelo Kindle
         kindle_bat = request.args.get('kbat')
 
         conf, tr_data = load_config(), load_translation_file()
@@ -200,7 +197,10 @@ def serve_dashboard():
 
         f_p = os.path.join(BASE_DIR, "fonts", "Roboto-Bold.ttf")
         f_huge = ImageFont.truetype(f_p, conf.get('font_size', 120))
-        f_city, f_med, f_graph, f_tiny = ImageFont.truetype(f_p, 90), ImageFont.truetype(f_p, 40), ImageFont.truetype(f_p, 28), ImageFont.truetype(f_p, 20)
+        f_city = ImageFont.truetype(f_p, 90)
+        f_med = ImageFont.truetype(f_p, 40)
+        f_graph = ImageFont.truetype(f_p, 28)
+        f_tiny = ImageFont.truetype(f_p, 20)
 
         temp_on, cond_txt, w_icon, is_day, w_url = get_weather(conf['lat'], conf['lon'])
         moon_icon, moon_key = get_moon_phase()
@@ -221,7 +221,6 @@ def serve_dashboard():
         if hum_v and hum_v != "--": draw.text((60, 660), f"{t('lbl_humidity')}: {hum_v}%", font=f_med, fill=FG)
         draw.text((60, 720) if hum_v else (60, 680), status_txt, font=f_med if not hum_v else f_tiny, fill=FG)
 
-        # Ícone Lua
         moon_path = os.path.join(BASE_DIR, "icons", f"{moon_icon}.png")
         if os.path.exists(moon_path):
             m_img = Image.open(moon_path).convert("RGBA").resize((100, 100))
@@ -232,19 +231,17 @@ def serve_dashboard():
             img.paste(m_final, (610, 50))
             draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
 
-        # --- Ícone Clima ---
         i_path = os.path.join(BASE_DIR, "icons", f"{w_icon}.png")
         if not os.path.exists(i_path) and w_url:
             try:
-                icon_res = requests.get(w_url, timeout=5)
-                if icon_res.status_code == 200:
-                    with open(i_path, 'wb') as f: f.write(icon_res.content)
+                r_icon = requests.get(w_url, timeout=5)
+                if r_icon.status_code == 200:
+                    with open(i_path, 'wb') as f: f.write(r_icon.content)
             except: pass
 
         if not os.path.exists(i_path):
             if "_" in w_icon:
-                simple_icon = w_icon.split("_")[-1]
-                i_path = os.path.join(BASE_DIR, "icons", f"{simple_icon}.png")
+                i_path = os.path.join(BASE_DIR, "icons", f"{w_icon.split('_')[-1]}.png")
             if not os.path.exists(i_path): i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
 
         if os.path.exists(i_path):
@@ -255,24 +252,43 @@ def serve_dashboard():
             if conf.get('dark_mode'): i_final = ImageOps.invert(i_final)
             img.paste(i_final, (60, 740))
 
-        # Desenho Direita
+        # Desenho Direita - Adaptativo
         draw.line((724, 50, 724, 1022), fill=FG, width=4)
         cx = 1086
-        draw_gauge(draw, cx - 180, 250, 130, psutil.cpu_percent(), t("lbl_cpu"), f_med, f_med, FG)
-        draw_gauge(draw, cx + 180, 250, 130, psutil.virtual_memory().percent, t("lbl_ram"), f_med, f_med, FG)
-        draw_sparkline(draw, 780, 530, 600, 100, [x[0] for x in net_history], t("lbl_down"), f_graph, f_tiny, FG)
-        draw_sparkline(draw, 780, 730, 600, 100, [x[1] for x in net_history], t("lbl_up"), f_graph, f_tiny, FG)
-
         fan_rpm = get_fan_speed()
-        hw_info = f"CPU: {get_rpi_temp():.1f}°C"
-        if fan_rpm is not None: hw_info += f" | FAN: {fan_rpm} RPM"
-        draw.text((cx, 920), hw_info, font=f_med, fill=FG, anchor="mm")
-        
-        # Rodapé com IP, Bateria do Kindle e Hora
+
+        if time.time() - slave_data["last_seen"] < 60:
+            # LAYOUT DUPLO
+            draw_gauge(draw, cx - 150, 160, 70, psutil.cpu_percent(), "M-CPU", f_graph, f_tiny, FG)
+            draw_gauge(draw, cx + 150, 160, 70, psutil.virtual_memory().percent, "M-RAM", f_graph, f_tiny, FG)
+            draw_sparkline(draw, 780, 310, 600, 50, [x[0] for x in net_history], "M-Down", f_tiny, f_tiny, FG)
+            draw_sparkline(draw, 780, 410, 600, 50, [x[1] for x in net_history], "M-Up", f_tiny, f_tiny, FG)
+            hw_info = f"MASTER CPU: {get_rpi_temp():.1f}°C"
+            if fan_rpm is not None: hw_info += f" | FAN: {fan_rpm} RPM"
+            draw.text((cx, 490), hw_info, font=f_tiny, fill=FG, anchor="mm")
+
+            draw.line((740, 520, 1428, 520), fill=FG, width=2)
+
+            draw_gauge(draw, cx - 150, 640, 70, slave_data['cpu'], "S-CPU", f_graph, f_tiny, FG)
+            draw_gauge(draw, cx + 150, 640, 70, slave_data['ram'], "S-RAM", f_graph, f_tiny, FG)
+            draw_sparkline(draw, 780, 790, 600, 50, [x[0] for x in slave_data['net_history']], "S-Down", f_tiny, f_tiny, FG)
+            draw_sparkline(draw, 780, 890, 600, 50, [x[1] for x in slave_data['net_history']], "S-Up", f_tiny, f_tiny, FG)
+            s_hw = f"SLAVE CPU: {slave_data['temp']:.1f}°C"
+            if slave_data['fan'] is not None: s_hw += f" | FAN: {slave_data['fan']} RPM"
+            draw.text((cx, 970), s_hw, font=f_tiny, fill=FG, anchor="mm")
+        else:
+            # LAYOUT ORIGINAL (Apenas Master)
+            draw_gauge(draw, cx - 180, 250, 130, psutil.cpu_percent(), t("lbl_cpu"), f_med, f_med, FG)
+            draw_gauge(draw, cx + 180, 250, 130, psutil.virtual_memory().percent, t("lbl_ram"), f_med, f_med, FG)
+            draw_sparkline(draw, 780, 530, 600, 100, [x[0] for x in net_history], t("lbl_down"), f_graph, f_tiny, FG)
+            draw_sparkline(draw, 780, 730, 600, 100, [x[1] for x in net_history], t("lbl_up"), f_graph, f_tiny, FG)
+            hw_info = f"CPU: {get_rpi_temp():.1f}°C"
+            if fan_rpm is not None: hw_info += f" | FAN: {fan_rpm} RPM"
+            draw.text((cx, 920), hw_info, font=f_med, fill=FG, anchor="mm")
+
         footer_text = f"IP: {get_ip()}"
         if kindle_bat: footer_text += f" | Kindle: {kindle_bat}%"
         footer_text += f" | {now.strftime('%H:%M:%S')}"
-        
         draw.text((1400, 1040), footer_text, font=f_tiny, fill=FG, anchor="rb")
 
         if conf.get('rotation') in [1, 3]: img = img.rotate(90, expand=True)
@@ -280,7 +296,6 @@ def serve_dashboard():
         
         buf = io.BytesIO()
         img.save(buf, 'PNG'); buf.seek(0)
-
         response = send_file(buf, mimetype='image/png')
         response.headers['X-Brightness'] = str(conf.get('brightness', 10))
         return response
@@ -310,8 +325,7 @@ def check_status():
 
 @app.route('/')
 def index():
-    tr_data = load_translation_file()
-    return render_template('index.html', config=load_config(), tr=tr_data, dash_active=DASH_ACTIVE)
+    return render_template('index.html', config=load_config(), tr=load_translation_file(), dash_active=DASH_ACTIVE)
 
 if __name__ == '__main__':
     threading.Thread(target=update_sensor_background, daemon=True).start()
