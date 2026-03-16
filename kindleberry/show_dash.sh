@@ -1,6 +1,6 @@
 #!/bin/sh
 # --- Configuração Kindleberry (zanivann) ---
-VERSION="v1.9.5 (Zanivann Sync)"
+VERSION="v2.0.1 (Zanivann Sync)"
 IP_RPI="192.168.0.10"
 PORT="5000"
 FBINK="/mnt/us/extensions/kindleberry/fbink"

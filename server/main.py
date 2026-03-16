@@ -165,9 +165,9 @@ def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
     start, end = 135, 405
     curr = start + ((end - start) * (percent / 100))
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=end, fill=color, width=3)
-    draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16 if radius > 100 else 8)
+    draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16 if radius > 80 else 10)
     draw.text((x, y), f"{int(percent)}%", font=font_val, fill=color, anchor="mm")
-    draw.text((x, y+radius+35), label, font=font_label, fill=color, anchor="mm")
+    draw.text((x, y+radius+40), label, font=font_label, fill=color, anchor="mm")
 
 # --- ROTAS ---
 @app.route('/report', methods=['POST'])
@@ -199,8 +199,8 @@ def serve_dashboard():
         f_huge = ImageFont.truetype(f_p, conf.get('font_size', 120))
         f_city = ImageFont.truetype(f_p, 90)
         f_med = ImageFont.truetype(f_p, 40)
-        f_graph = ImageFont.truetype(f_p, 28)
-        f_tiny = ImageFont.truetype(f_p, 20)
+        f_graph = ImageFont.truetype(f_p, 32) # Aumentado de 28
+        f_tiny = ImageFont.truetype(f_p, 24)  # Aumentado de 20
 
         temp_on, cond_txt, w_icon, is_day, w_url = get_weather(conf['lat'], conf['lon'])
         moon_icon, moon_key = get_moon_phase()
@@ -252,30 +252,36 @@ def serve_dashboard():
             if conf.get('dark_mode'): i_final = ImageOps.invert(i_final)
             img.paste(i_final, (60, 740))
 
-        # Desenho Direita - Adaptativo
+        # Desenho Direita - Adaptativo e Redimensionado
         draw.line((724, 50, 724, 1022), fill=FG, width=4)
         cx = 1086
         fan_rpm = get_fan_speed()
 
         if time.time() - slave_data["last_seen"] < 60:
-            # LAYOUT DUPLO
-            draw_gauge(draw, cx - 150, 160, 70, psutil.cpu_percent(), "M-CPU", f_graph, f_tiny, FG)
-            draw_gauge(draw, cx + 150, 160, 70, psutil.virtual_memory().percent, "M-RAM", f_graph, f_tiny, FG)
-            draw_sparkline(draw, 780, 310, 600, 50, [x[0] for x in net_history], "M-Down", f_tiny, f_tiny, FG)
-            draw_sparkline(draw, 780, 410, 600, 50, [x[1] for x in net_history], "M-Up", f_tiny, f_tiny, FG)
-            hw_info = f"MASTER CPU: {get_rpi_temp():.1f}°C"
-            if fan_rpm is not None: hw_info += f" | FAN: {fan_rpm} RPM"
-            draw.text((cx, 490), hw_info, font=f_tiny, fill=FG, anchor="mm")
+            # LAYOUT DUPLO - Ajustado para fontes e gráficos maiores
+            # Master (Topo)
+            draw_gauge(draw, cx - 160, 165, 85, psutil.cpu_percent(), "MASTER CPU", f_graph, f_tiny, FG)
+            draw_gauge(draw, cx + 160, 165, 85, psutil.virtual_memory().percent, "MASTER RAM", f_graph, f_tiny, FG)
+            draw_sparkline(draw, 780, 330, 600, 70, [x[0] for x in net_history], "M-Down", f_tiny, f_tiny, FG)
+            draw_sparkline(draw, 780, 460, 600, 70, [x[1] for x in net_history], "M-Up", f_tiny, f_tiny, FG)
+            
+            # Separador central
+            draw.line((740, 560, 1428, 560), fill=FG, width=2)
 
-            draw.line((740, 520, 1428, 520), fill=FG, width=2)
-
-            draw_gauge(draw, cx - 150, 640, 70, slave_data['cpu'], "S-CPU", f_graph, f_tiny, FG)
-            draw_gauge(draw, cx + 150, 640, 70, slave_data['ram'], "S-RAM", f_graph, f_tiny, FG)
-            draw_sparkline(draw, 780, 790, 600, 50, [x[0] for x in slave_data['net_history']], "S-Down", f_tiny, f_tiny, FG)
-            draw_sparkline(draw, 780, 890, 600, 50, [x[1] for x in slave_data['net_history']], "S-Up", f_tiny, f_tiny, FG)
-            s_hw = f"SLAVE CPU: {slave_data['temp']:.1f}°C"
-            if slave_data['fan'] is not None: s_hw += f" | FAN: {slave_data['fan']} RPM"
-            draw.text((cx, 970), s_hw, font=f_tiny, fill=FG, anchor="mm")
+            # Slave (Base)
+            draw_gauge(draw, cx - 160, 680, 85, slave_data['cpu'], "SLAVE CPU", f_graph, f_tiny, FG)
+            draw_gauge(draw, cx + 160, 680, 85, slave_data['ram'], "SLAVE RAM", f_graph, f_tiny, FG)
+            draw_sparkline(draw, 780, 830, 600, 70, [x[0] for x in slave_data['net_history']], "S-Down", f_tiny, f_tiny, FG)
+            draw_sparkline(draw, 780, 960, 600, 70, [x[1] for x in slave_data['net_history']], "S-Up", f_tiny, f_tiny, FG)
+            
+            # Info Hardware (Texto Pequeno nos cantos)
+            m_hw = f"M: {get_rpi_temp():.1f}°C"
+            if fan_rpm: m_hw += f" | {fan_rpm}RPM"
+            draw.text((740, 525), m_hw, font=f_tiny, fill=FG)
+            
+            s_hw = f"S: {slave_data['temp']:.1f}°C"
+            if slave_data['fan']: s_hw += f" | {slave_data['fan']}RPM"
+            draw.text((740, 1025), s_hw, font=f_tiny, fill=FG)
         else:
             # LAYOUT ORIGINAL (Apenas Master)
             draw_gauge(draw, cx - 180, 250, 130, psutil.cpu_percent(), t("lbl_cpu"), f_med, f_med, FG)
