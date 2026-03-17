@@ -1,4 +1,4 @@
-# 📱 KindleBerry Dashboard
+# 📱 KindleBerry Dashboard v2.0.2
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Platform](https://img.shields.io/badge/platform-Kindle%20%7C%20Raspberry%20Pi-orange)
 
@@ -20,6 +20,8 @@ Um dashboard de alta performance para Kindles (com Jailbreak), transformando o e
     * **Rotação de Tela** (Retrato/Paisagem) via software.
     * **Dark Mode** (Modo Noturno) real.
 * **Anti-Ghosting:** Atualização com flash de tela para garantir nitidez no e-ink.
+* **Monitoramento de Cluster (Master/Slave):** Monitore múltiplos servidores simultaneamente. O layout se adapta automaticamente ao detectar agentes remotos.
+* **Interface Adaptativa Refinada (v2.0.2):** Gráficos, medidores e fontes ampliados no modo Dual-Monitor para garantir legibilidade superior em telas e-ink.
 
 ---
 
@@ -125,27 +127,48 @@ Este script faz o loop infinito: busca a bateria local, baixa a imagem do servid
 
 ```bash
 #!/bin/sh
-IP_RPI="192.168.0.XXX" 
+VERSION="v2.0.2 (UI Refinement)"
+IP_RPI="192.168.0.10"
+PORT="5000"
 FBINK="/mnt/us/extensions/kindleberry/fbink"
-URL="http://$IP_RPI:5000/dashboard.png"
+URL_BASE="http://$IP_RPI:$PORT"
 
-# Previne hibernação
+OUTPUT="/tmp/dashboard.png"
+HEADERS="/tmp/dash.headers"
+
+# Previne hibernação e ativa rede
 lipc-set-prop com.lab126.powerd preventScreenSaver 1
+lipc-set-prop com.lab126.cmd wirelessEnable 1
+
+$FBINK -c -f -m -q "KindleBerry $VERSION: Iniciando..."
 
 while true; do
-    BAT=$(lipc-get-prop com.lab126.powerd capacity)
-    
-    # Baixa imagem e salva os cabeçalhos HTTP
-    curl -s -D /tmp/headers.txt -o /tmp/dash.png "$URL?kbat=$BAT"
-    
-    # Extrai o brilho real (X-Brightness) e aplica ao hardware
-    BRIGHT=$(grep -i "X-Brightness:" /tmp/headers.txt | awk '{print $2}' | tr -d '\r')
-    if [ ! -z "$BRIGHT" ]; then
-        lipc-set-prop com.lab126.powerd intensity "$BRIGHT"
+    # Verifica comando de parada remoto
+    STATUS=$(wget -q -T 5 -t 1 -O - "$URL_BASE/check_status")
+    if [ "$STATUS" == "STOP" ]; then
+        $FBINK -c -f -q "Encerrado pelo Servidor."
+        lipc-set-prop com.lab126.powerd preventScreenSaver 0
+        exit 0
     fi
 
-    # Renderiza com Flash Refresh
-    $FBINK -c -f -g file=/tmp/dash.png
+    # Coleta bateria local
+    BAT=$(lipc-get-prop com.lab126.powerd battLevel)
+    if [ -z "$BAT" ]; then BAT=0; fi
+
+    # Download com telemetria de bateria
+    if curl -s -L -D "$HEADERS" -o "$OUTPUT" "$URL_BASE/dashboard.png?kbat=$BAT"; then
+        # Renderização com Flash Refresh
+        $FBINK -g file="$OUTPUT" -c -q
+        
+        # Sincronização de Brilho via Header X-Brightness
+        NEW_BRIGHT=$(grep -i "X-Brightness:" "$HEADERS" | awk '{print $2}' | tr -d '\r' | tr -d '[:space:]')
+        if [ "$NEW_BRIGHT" != "" ]; then
+            lipc-set-prop com.lab126.powerd flIntensity "$NEW_BRIGHT"
+        fi
+    else
+        $FBINK -m -q "Erro: Sem ligação ao servidor"
+        lipc-set-prop com.lab126.cmd wirelessEnable 1
+    fi
     sleep 10
 done
 ```
@@ -221,6 +244,7 @@ Como o script toma conta da tela, você não verá os botões de navegação pad
 | **Horário Errado** | Fuso horário do Docker. | O container roda em UTC por padrão. Configure o Timezone correto (ex: `America/Sao_Paulo`) na interface Web (`http://IP-DO-RPI:5000`) e clique em Salvar. |
 | **Tela piscando muito** | Atualização completa (Full Refresh). | O script usa a flag `-f` para limpar resíduos (ghosting) a cada atualização. Isso é normal para garantir a nitidez da imagem e evitar borrões. Se incomodar, aumente o tempo do `sleep` no script `show_dash.sh`. |
 | **Dados de CPU/RAM zerados** | Erro de conexão. | Verifique se o Kindle e o Raspberry Pi estão na mesma rede Wi-Fi e se o IP configurado no `show_dash.sh` está correto. |
+| **Slave não aparece** | Agente offline ou Docker isolado. | Certifique-se de que o `agent.py` está rodando com `network_mode: host` para atravessar o isolamento do container. |
 
 ---
 
