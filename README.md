@@ -1,4 +1,4 @@
-# 📱 KindleBerry Dashboard v2.0.2
+# 📱 KindleBerry Dashboard v2.0.3
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Platform](https://img.shields.io/badge/platform-Kindle%20%7C%20Raspberry%20Pi-orange)
 
@@ -21,7 +21,7 @@ Um dashboard de alta performance para Kindles (com Jailbreak), transformando o e
     * **Dark Mode** (Modo Noturno) real.
 * **Anti-Ghosting:** Atualização com flash de tela para garantir nitidez no e-ink.
 * **Monitoramento de Cluster (Master/Slave):** Monitore múltiplos servidores simultaneamente. O layout se adapta automaticamente ao detectar agentes remotos.
-* **Interface Adaptativa Refinada (v2.0.2):** Gráficos, medidores e fontes ampliados no modo Dual-Monitor para garantir legibilidade superior em telas e-ink.
+* **Interface Adaptativa Refinada (v2.0.3):** Gráficos, medidores e fontes ampliados no modo Dual-Monitor para garantir legibilidade superior em telas e-ink.
 
 ---
 
@@ -127,7 +127,7 @@ Este script faz o loop infinito: busca a bateria local, baixa a imagem do servid
 
 ```bash
 #!/bin/sh
-VERSION="v2.0.2 (UI Refinement)"
+VERSION="v2.0.3 (UI Refinement)"
 IP_RPI="192.168.0.10"
 PORT="5000"
 FBINK="/mnt/us/extensions/kindleberry/fbink"
