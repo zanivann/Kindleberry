@@ -27,8 +27,7 @@ slave_data = {
 
 try:
     from dht_reader import DHTReader
-    # Pino 4 para o DHT22 para evitar conflitos
-    sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 4)
+    sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 17)
 except Exception:
     sensor_client = None
 
@@ -57,7 +56,7 @@ def update_sensor_background():
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Caminho absoluto para evitar problemas de diretório de trabalho no Docker
+# Uso de path absoluto para garantir que o Docker encontre o mount
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 
 ICONS_DIR = os.path.join(BASE_DIR, "icons")
@@ -80,10 +79,9 @@ def load_config():
     except: return default
 
 def save_config(data):
-    try:
-        with open(CONFIG_FILE, 'w') as f: json.dump(data, f, indent=4)
-    except Exception as e:
-        print(f"Erro ao salvar config: {e}")
+    # Agora levanta exceção para não falhar silenciosamente
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
 
 def load_translation_file():
     global CURRENT_LANG
@@ -243,22 +241,22 @@ def serve_dashboard():
         now = datetime.datetime.now()
         moon_icon, moon_key = get_moon_phase()
 
-        # --- DESENHO ESQUERDA (LAYOUT ESPAÇADO v2.1.8) ---
+        # --- DESENHO ESQUERDA (LAYOUT OTIMIZADO v2.1.9) ---
         draw.text((60, 60), now.strftime("%H:%M"), font=f_huge, fill=FG)
         draw.text((60, 220), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
         draw.text((60, 320), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
         draw.text((60, 520), f"{temp_main}°C", font=f_huge, fill=FG)
         
-        # Cursor vertical "descido" para evitar sobreposição
-        y_cursor = 660 
+        # Cursor vertical descido para evitar sobreposição
+        y_cursor = 680 
         
         if sensor_ext != "none" and temp_sec:
             draw.text((60, y_cursor), f"Ext: {temp_sec}°C", font=f_med, fill=FG)
-            y_cursor += 75
+            y_cursor += 80
             
         if hum_main and hum_main != "--":
             draw.text((60, y_cursor), f"{t('lbl_humidity')}: {hum_main}%", font=f_med, fill=FG)
-            y_cursor += 75
+            y_cursor += 80
             
         draw.text((60, y_cursor), status_main, font=f_med if not hum_main else f_tiny, fill=FG)
 
@@ -343,6 +341,7 @@ def serve_dashboard():
 def update():
     try:
         c = load_config()
+        # Coleta de dados com validação
         for k in ['city_name', 'timezone', 'lat', 'lon', 'language', 'theme_mode', 'sensor_main', 'sensor_ext']:
             if k in request.form: c[k] = request.form[k]
         if 'brightness' in request.form: 
@@ -354,10 +353,12 @@ def update():
         if 'font_size' in request.form:
             try: c['font_size'] = int(request.form['font_size'])
             except: pass
+            
         save_config(c)
         return redirect('/')
     except Exception as e:
-        return "Erro Interno ao Salvar", 500
+        traceback.print_exc()
+        return f"Erro Crítico ao Salvar: {e}", 500 # Informação visível no erro
 
 @app.route('/toggle_status', methods=['POST'])
 def toggle_status():
