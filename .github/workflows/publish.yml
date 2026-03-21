@@ -3,7 +3,7 @@ name: Docker Publish Kindleberry
 on:
   push:
     branches: [ "main" ]
-    tags: [ "v*.*.*" ] # Gatilho para tags de versão
+    tags: [ "v*.*.*" ]
   workflow_dispatch: 
 
 env:
@@ -13,25 +13,30 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # Alterado para permitir criação de releases
       packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Extrai metadados (tags) de forma inteligente
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY }}/${{ github.repository }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+      # --- ETAPA NOVA: EMPACOTAR O KINDLEBERRY PURO ---
+      - name: Zip Kindleberry Files
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          zip -r kindleberry_puro_${{ github.ref_name }}.zip kindleberry/
 
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kindleberry_puro_${{ github.ref_name }}.zip
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      # --- LOGICA DOCKER (MANTIDA) ---
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -55,7 +60,6 @@ jobs:
           context: ./server
           file: ./server/Dockerfile
           push: true
-          # Agora ele usa tanto 'latest' quanto a versão da tag (ex: 2.0.1)
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-server:latest
             ${{ github.ref_type == 'tag' && format('{0}/{1}-server:{2}', env.REGISTRY, env.IMAGE_NAME, github.ref_name) || '' }}
