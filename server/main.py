@@ -11,9 +11,10 @@ import threading
 import traceback
 from flask import Flask, send_file, request, render_template, redirect
 from PIL import Image, ImageDraw, ImageFont, ImageOps
+from w1thermsensor import W1ThermSensor
 
 # --- ESTADO GLOBAL ---
-latest_sensor_data = {"temp": "--", "hum": "--"}
+latest_sensor_data = {"temp": "--", "hum": "--", "ext_temp": "--"}
 DASH_ACTIVE = True
 CURRENT_LANG = {} 
 last_net_io, last_net_time, net_history = None, 0, []
@@ -30,6 +31,11 @@ try:
 except Exception:
     sensor_client = None
 
+try:
+    ds_sensor = W1ThermSensor()
+except Exception:
+    ds_sensor = None
+
 def update_sensor_background():
     global latest_sensor_data
     while True:
@@ -40,6 +46,12 @@ def update_sensor_background():
                     latest_sensor_data["temp"] = f"{t_val:.1f}"
                     latest_sensor_data["hum"] = f"{h:.1f}"
             except Exception: pass
+            
+        if ds_sensor:
+            try:
+                latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
+            except Exception: pass
+            
         time.sleep(15)
 
 app = Flask(__name__)
@@ -53,7 +65,8 @@ def load_config():
     default = {
         "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", 
         "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", 
-        "dark_mode": False, "weather_source": "online", "brightness": 10
+        "dark_mode": False, "brightness": 10,
+        "sensor_main": "online", "sensor_ext": "none"
     }
     if not os.path.exists(CONFIG_FILE): return default
     try:
@@ -167,7 +180,7 @@ def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=end, fill=color, width=3)
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16 if radius > 80 else 10)
     draw.text((x, y), f"{int(percent)}%", font=font_val, fill=color, anchor="mm")
-    draw.text((x, y+radius+40), label, font=font_label, fill=color, anchor="mm")
+    draw.text((x, y+radius+40), label, font_label, fill=color, anchor="mm")
 
 # --- ROTAS ---
 @app.route('/report', methods=['POST'])
@@ -199,58 +212,89 @@ def serve_dashboard():
         f_huge = ImageFont.truetype(f_p, conf.get('font_size', 120))
         f_city = ImageFont.truetype(f_p, 90)
         f_med = ImageFont.truetype(f_p, 40)
-        f_graph = ImageFont.truetype(f_p, 32) # Aumentado de 28
-        f_tiny = ImageFont.truetype(f_p, 24)  # Aumentado de 20
+        f_graph = ImageFont.truetype(f_p, 32)
+        f_tiny = ImageFont.truetype(f_p, 24)
 
-        temp_on, cond_txt, w_icon, is_day, w_url = get_weather(conf['lat'], conf['lon'])
-        moon_icon, moon_key = get_moon_phase()
+        sensor_main = conf.get('sensor_main', 'online')
+        sensor_ext = conf.get('sensor_ext', 'none')
+
+        temp_on, cond_txt, w_icon, is_day, w_url = "--", "", "cloudy", 1, None
         
-        if conf.get('weather_source') == "sensor":
-            temp_v, hum_v, status_txt = latest_sensor_data["temp"], latest_sensor_data["hum"], t("lbl_sensor_local")
-        else:
-            temp_v, hum_v, status_txt = temp_on, None, cond_txt
+        if "online" in [sensor_main, sensor_ext] or (sensor_main == "none" and sensor_ext == "none"):
+            temp_on, cond_txt, w_icon, is_day, w_url = get_weather(conf['lat'], conf['lon'])
+
+        def get_sensor_data(s_type):
+            if s_type == "online": 
+                return temp_on, None, cond_txt
+            if s_type == "dht": 
+                return latest_sensor_data["temp"], latest_sensor_data["hum"], t("lbl_sensor_local")
+            if s_type == "ds18": 
+                return latest_sensor_data.get("ext_temp", "--"), None, t("lbl_sensor_ext")
+            return None, None, None
+
+        temp_main, hum_main, status_main = get_sensor_data(sensor_main)
+        temp_sec, _, status_sec = get_sensor_data(sensor_ext)
+
+        if not temp_main: 
+            temp_main = "--"
+            status_main = t("lbl_no_data")
 
         update_net_stats()
         now = datetime.datetime.now()
+        moon_icon, moon_key = get_moon_phase()
 
         # Desenho Esquerda
         draw.text((60, 60), now.strftime("%H:%M"), font=f_huge, fill=FG)
         draw.text((60, 220), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
         draw.text((60, 320), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
-        draw.text((60, 520), f"{temp_v}°C", font=f_huge, fill=FG)
-        if hum_v and hum_v != "--": draw.text((60, 660), f"{t('lbl_humidity')}: {hum_v}%", font=f_med, fill=FG)
-        draw.text((60, 720) if hum_v else (60, 680), status_txt, font=f_med if not hum_v else f_tiny, fill=FG)
+        
+        # Temperatura Principal (Interno/Main)
+        draw.text((60, 520), f"{temp_main}°C", font=f_huge, fill=FG)
+        
+        y_cursor = 620
+        # Temperatura Secundária (Externo/Ext)
+        if sensor_ext != "none" and temp_sec:
+            draw.text((60, y_cursor), f"Ext: {temp_sec}°C", font=f_med, fill=FG)
+            y_cursor += 60
+            
+        # Umidade
+        if hum_main and hum_main != "--":
+            draw.text((60, y_cursor), f"{t('lbl_humidity')}: {hum_main}%", font=f_med, fill=FG)
+            y_cursor += 60
+            
+        draw.text((60, y_cursor), status_main, font=f_med if not hum_main else f_tiny, fill=FG)
 
-        moon_path = os.path.join(BASE_DIR, "icons", f"{moon_icon}.png")
-        if os.path.exists(moon_path):
-            m_img = Image.open(moon_path).convert("RGBA").resize((100, 100))
-            m_bg = Image.new("RGBA", m_img.size, (BG, BG, BG, 255))
-            m_bg.alpha_composite(m_img)
-            m_final = m_bg.convert("L")
-            if conf.get('dark_mode'): m_final = ImageOps.invert(m_final)
-            img.paste(m_final, (610, 50))
-            draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
-
-        i_path = os.path.join(BASE_DIR, "icons", f"{w_icon}.png")
-        if not os.path.exists(i_path) and w_url:
-            try:
-                r_icon = requests.get(w_url, timeout=5)
-                if r_icon.status_code == 200:
-                    with open(i_path, 'wb') as f: f.write(r_icon.content)
-            except: pass
-
-        if not os.path.exists(i_path):
-            if "_" in w_icon:
-                i_path = os.path.join(BASE_DIR, "icons", f"{w_icon.split('_')[-1]}.png")
-            if not os.path.exists(i_path): i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
-
-        if os.path.exists(i_path):
-            i_img = Image.open(i_path).convert("RGBA").resize((320, 320))
-            i_bg = Image.new("RGBA", i_img.size, (BG, BG, BG, 255))
-            i_bg.alpha_composite(i_img)
-            i_final = i_bg.convert("L")
-            if conf.get('dark_mode'): i_final = ImageOps.invert(i_final)
-            img.paste(i_final, (60, 740))
+        # Ícones
+        if "online" in [sensor_main, sensor_ext]:
+            moon_path = os.path.join(BASE_DIR, "icons", f"{moon_icon}.png")
+            if os.path.exists(moon_path):
+                m_img = Image.open(moon_path).convert("RGBA").resize((100, 100))
+                m_bg = Image.new("RGBA", m_img.size, (BG, BG, BG, 255))
+                m_bg.alpha_composite(m_img)
+                m_final = m_bg.convert("L")
+                if conf.get('dark_mode'): m_final = ImageOps.invert(m_final)
+                img.paste(m_final, (610, 50))
+                draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
+    
+            i_path = os.path.join(BASE_DIR, "icons", f"{w_icon}.png")
+            if not os.path.exists(i_path) and w_url:
+                try:
+                    r_icon = requests.get(w_url, timeout=5)
+                    if r_icon.status_code == 200:
+                        with open(i_path, 'wb') as f: f.write(r_icon.content)
+                except: pass
+    
+            if not os.path.exists(i_path):
+                if "_" in w_icon: i_path = os.path.join(BASE_DIR, "icons", f"{w_icon.split('_')[-1]}.png")
+                if not os.path.exists(i_path): i_path = os.path.join(BASE_DIR, "icons", "cloudy.png")
+    
+            if os.path.exists(i_path):
+                i_img = Image.open(i_path).convert("RGBA").resize((320, 320))
+                i_bg = Image.new("RGBA", i_img.size, (BG, BG, BG, 255))
+                i_bg.alpha_composite(i_img)
+                i_final = i_bg.convert("L")
+                if conf.get('dark_mode'): i_final = ImageOps.invert(i_final)
+                img.paste(i_final, (60, 740))
 
         # Desenho Direita - Adaptativo e Redimensionado
         draw.line((724, 50, 724, 1022), fill=FG, width=4)
@@ -258,23 +302,18 @@ def serve_dashboard():
         fan_rpm = get_fan_speed()
 
         if time.time() - slave_data["last_seen"] < 60:
-            # LAYOUT DUPLO - Ajustado para fontes e gráficos maiores
-            # Master (Topo)
             draw_gauge(draw, cx - 160, 165, 85, psutil.cpu_percent(), "MASTER CPU", f_graph, f_tiny, FG)
             draw_gauge(draw, cx + 160, 165, 85, psutil.virtual_memory().percent, "MASTER RAM", f_graph, f_tiny, FG)
             draw_sparkline(draw, 780, 330, 600, 70, [x[0] for x in net_history], "M-Down", f_tiny, f_tiny, FG)
             draw_sparkline(draw, 780, 460, 600, 70, [x[1] for x in net_history], "M-Up", f_tiny, f_tiny, FG)
             
-            # Separador central
             draw.line((740, 560, 1428, 560), fill=FG, width=2)
 
-            # Slave (Base)
             draw_gauge(draw, cx - 160, 680, 85, slave_data['cpu'], "SLAVE CPU", f_graph, f_tiny, FG)
             draw_gauge(draw, cx + 160, 680, 85, slave_data['ram'], "SLAVE RAM", f_graph, f_tiny, FG)
             draw_sparkline(draw, 780, 830, 600, 70, [x[0] for x in slave_data['net_history']], "S-Down", f_tiny, f_tiny, FG)
             draw_sparkline(draw, 780, 960, 600, 70, [x[1] for x in slave_data['net_history']], "S-Up", f_tiny, f_tiny, FG)
             
-            # Info Hardware (Texto Pequeno nos cantos)
             m_hw = f"M: {get_rpi_temp():.1f}°C"
             if fan_rpm: m_hw += f" | {fan_rpm}RPM"
             draw.text((740, 525), m_hw, font=f_tiny, fill=FG)
@@ -283,7 +322,6 @@ def serve_dashboard():
             if slave_data['fan']: s_hw += f" | {slave_data['fan']}RPM"
             draw.text((740, 1025), s_hw, font=f_tiny, fill=FG)
         else:
-            # LAYOUT ORIGINAL (Apenas Master)
             draw_gauge(draw, cx - 180, 250, 130, psutil.cpu_percent(), t("lbl_cpu"), f_med, f_med, FG)
             draw_gauge(draw, cx + 180, 250, 130, psutil.virtual_memory().percent, t("lbl_ram"), f_med, f_med, FG)
             draw_sparkline(draw, 780, 530, 600, 100, [x[0] for x in net_history], t("lbl_down"), f_graph, f_tiny, FG)
@@ -314,10 +352,18 @@ def update():
     c = load_config()
     for k in ['city_name', 'timezone', 'lat', 'lon']:
         if k in request.form: c[k] = request.form[k]
+    
     if 'brightness' in request.form: c['brightness'] = int(request.form['brightness'])
-    c['rotation'], c['font_size'] = int(request.form.get('rotation', 1)), int(request.form.get('font_size', 120))
-    c['dark_mode'], c['weather_source'] = 'dark_mode' in request.form, request.form.get('weather_source', 'online')
-    save_config(c); return redirect('/')
+    
+    c['rotation'] = int(request.form.get('rotation', 1))
+    c['font_size'] = int(request.form.get('font_size', 120))
+    c['dark_mode'] = 'dark_mode' in request.form
+    
+    if 'sensor_main' in request.form: c['sensor_main'] = request.form['sensor_main']
+    if 'sensor_ext' in request.form: c['sensor_ext'] = request.form['sensor_ext']
+
+    save_config(c)
+    return redirect('/')
 
 @app.route('/toggle_status', methods=['POST'])
 def toggle_status():

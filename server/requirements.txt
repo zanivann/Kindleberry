@@ -2,3 +2,4 @@ flask
 psutil
 Pillow
 requests
+w1thermsensor

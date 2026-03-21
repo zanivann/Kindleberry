@@ -25,7 +25,16 @@
     "ui_opt_sensor": "Sensor Local",
     "lbl_humidity": "Umidade",
     "lbl_sensor_local": "Sensor DHT22",
+    "lbl_sensor_ext": "Sensor Externo",
+    "lbl_no_data": "Sem dados",
     "err_sensor": "Erro no Sensor",
+    
+    "ui_brightness": "Brilho Real do Kindle (0-24)",
+    "ui_sensor_mapping": "Mapeamento de Sensores",
+    "ui_sensor_main": "Sensor Principal (Interno)",
+    "ui_sensor_ext": "Sensor Secundário (Externo)",
+    "ui_opt_api": "Tempo Online (API)",
+    "ui_opt_none": "Nenhum",
     
     "lbl_cpu": "CPU",
     "lbl_ram": "RAM",

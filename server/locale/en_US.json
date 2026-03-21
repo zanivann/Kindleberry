@@ -25,7 +25,16 @@
     "ui_opt_sensor": "Local Sensor",
     "lbl_humidity": "Humidity",
     "lbl_sensor_local": "DHT22 Sensor",
+    "lbl_sensor_ext": "External Sensor",
+    "lbl_no_data": "No data",
     "err_sensor": "Sensor Error",
+    
+    "ui_brightness": "Kindle Real Brightness (0-24)",
+    "ui_sensor_mapping": "Sensor Mapping",
+    "ui_sensor_main": "Main Sensor (Indoor)",
+    "ui_sensor_ext": "Secondary Sensor (Outdoor)",
+    "ui_opt_api": "Online Weather (API)",
+    "ui_opt_none": "None",
     
     "lbl_cpu": "CPU",
     "lbl_ram": "RAM",
