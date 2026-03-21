@@ -5,86 +5,26 @@
     <title>⚙️ {{ tr.ui_title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        :root {
-            --bg-color: #f4f7f6;
-            --card-bg: #ffffff;
-            --primary: #2c3e50;
-            --accent: #3498db;
-            --text: #333;
-            --border: #dcdde1;
-        }
-
-        body { 
-            font-family: 'Segoe UI', system-ui, sans-serif; 
-            background-color: var(--bg-color); 
-            color: var(--text);
-            margin: 0;
-            padding: 20px;
-        }
-
+        :root { --bg-color: #f4f7f6; --card-bg: #ffffff; --primary: #2c3e50; --accent: #3498db; --text: #333; --border: #dcdde1; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background-color: var(--bg-color); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 500px; margin: auto; }
-        
-        .card { 
-            background: var(--card-bg); 
-            padding: 25px; 
-            border-radius: 12px; 
-            margin-bottom: 20px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
-        }
-
+        .card { background: var(--card-bg); padding: 25px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .badge { padding: 5px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; text-transform: uppercase; }
         .badge-run { background: #e8f5e9; color: #27ae60; border: 1px solid #27ae60; }
         .badge-stop { background: #ffebee; color: #e74c3c; border: 1px solid #e74c3c; }
-
-        .btn-toggle { 
-            padding: 12px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; color: white; width: 100%; font-weight: 600; 
-        }
-
+        .btn-toggle { padding: 12px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; color: white; width: 100%; font-weight: 600; }
         label { display: block; margin: 15px 0 5px 0; font-weight: 600; font-size: 0.85em; color: #555; }
-
-        input[type="text"], 
-        input[type="number"], 
-        select { 
-            width: 100%; 
-            height: 45px; 
-            padding: 0 12px; 
-            border: 1px solid var(--border); 
-            border-radius: 8px; 
-            box-sizing: border-box; 
-            font-size: 15px;
-            background-color: #fff;
-            display: block;
-        }
-
-        .section-title { 
-            background: #f8f9fa; padding: 8px 12px; margin: 25px -25px 15px -25px; font-size: 0.75em; color: #7f8c8d; font-weight: bold; text-transform: uppercase; border-left: 4px solid var(--accent);
-        }
-
-        .row-group { display: flex; gap: 15px; }
-        .row-group > div { flex: 1; }
-
+        input[type="text"], input[type="number"], select { width: 100%; height: 45px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-size: 15px; background-color: #fff; display: block; }
+        .section-title { background: #f8f9fa; padding: 8px 12px; margin: 25px -25px 15px -25px; font-size: 0.75em; color: #7f8c8d; font-weight: bold; text-transform: uppercase; border-left: 4px solid var(--accent); }
+        .row-group { display: flex; gap: 10px; }
+        .row-group > * { flex: 1; }
         .search-group { display: flex; gap: 10px; align-items: flex-end; }
-        .btn-search {
-            height: 45px;
-            padding: 0 15px;
-            background: var(--accent);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            white-space: nowrap;
-        }
-        .btn-search:hover { background: #2980b9; }
-
-        .btn-save { 
-            background: var(--primary); color: #fff; padding: 14px; width: 100%; border: none; cursor: pointer; border-radius: 8px; font-size: 16px; font-weight: bold; margin-top: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
+        .btn-search { height: 45px; padding: 0 15px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-save { background: var(--primary); color: #fff; padding: 14px; width: 100%; border: none; cursor: pointer; border-radius: 8px; font-size: 16px; font-weight: bold; margin-top: 25px; }
     </style>
 </head>
 <body>
-
     <div class="container">
         <div class="card">
             <div class="status-header">
@@ -101,121 +41,104 @@
         </div>
 
         <div class="card">
-            <h3>🛠️ {{ tr.ui_title }}</h3>
             <form action="/update" method="POST">
-                
                 <label>🌍 {{ tr.ui_language }}</label>
                 <select name="language">
                     <option value="pt_BR" {% if config.language == 'pt_BR' %}selected{% endif %}>Português (BR)</option>
                     <option value="en_US" {% if config.language == 'en_US' %}selected{% endif %}>English (US)</option>
                 </select>
 
-                <label>💡 {{ tr.ui_brightness or 'Brilho' }}</label>
-                <div class="row-group" style="align-items: center; gap: 15px;">
-                    <input type="range" name="brightness" min="0" max="24" 
-                           value="{{ config.brightness }}" 
-                           oninput="this.nextElementSibling.innerText = this.value"
-                           style="flex: 1; height: 15px; cursor: pointer;">
-                    
-                    <output style="font-weight: bold; font-size: 1.2em; min-width: 30px; text-align: right;">
-                        {{ config.brightness }}
-                    </output>
+                <label>💡 Brilho</label>
+                <div class="row-group" style="align-items: center;">
+                    <input type="range" name="brightness" min="0" max="24" value="{{ config.brightness }}" oninput="this.nextElementSibling.innerText = this.value" style="flex: 2;">
+                    <output style="font-weight: bold; flex: 0.5; text-align: right;">{{ config.brightness }}</output>
                 </div>
 
-                <div class="section-title">📍 {{ tr.ui_sensor_mapping or 'Mapeamento' }}</div>
+                <div class="section-title">📍 Sensores</div>
+                <label>🏠 Sensor 1 (Destaque)</label>
+                <div class="row-group">
+                    <select name="sensor_main">
+                        <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>🌐 Online</option>
+                        <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
+                        <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
+                    </select>
+                    <select name="label_main">
+                        <option value="Int" {% if config.label_main == 'Int' %}selected{% endif %}>Interno</option>
+                        <option value="Ext" {% if config.label_main == 'Ext' %}selected{% endif %}>Externo</option>
+                        <option value="" {% if config.label_main == '' %}selected{% endif %}>Nenhum</option>
+                    </select>
+                </div>
 
-                <label>🏠 {{ tr.ui_sensor_main or 'Principal' }}</label>
-                <select name="sensor_main">
-                    <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>🌐 {{ tr.ui_opt_api or 'Online' }}</option>
-                    <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
-                    <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
-                </select>
-
-                <label>🌲 {{ tr.ui_sensor_ext or 'Secundário' }}</label>
-                <select name="sensor_ext">
-                    <option value="none" {% if config.sensor_ext == 'none' %}selected{% endif %}>❌ {{ tr.ui_opt_none or 'Nenhum' }}</option>
-                    <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>🌐 {{ tr.ui_opt_api or 'Online' }}</option>
-                    <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
-                    <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
-                </select>
+                <label>🌲 Sensor 2 (Secundário)</label>
+                <div class="row-group">
+                    <select name="sensor_ext">
+                        <option value="none" {% if config.sensor_ext == 'none' %}selected{% endif %}>❌ Nenhum</option>
+                        <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>🌐 Online</option>
+                        <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
+                        <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
+                    </select>
+                    <select name="label_ext">
+                        <option value="Int" {% if config.label_ext == 'Int' %}selected{% endif %}>Interno</option>
+                        <option value="Ext" {% if config.label_ext == 'Ext' %}selected{% endif %}>Externo</option>
+                        <option value="" {% if config.label_ext == '' %}selected{% endif %}>Nenhum</option>
+                    </select>
+                </div>
 
                 <label>🏙️ {{ tr.ui_city }}</label>
                 <div class="search-group">
-                    <input type="text" id="city_input" name="city_name" value="{{ config.city_name }}" placeholder="Digite a cidade...">
+                    <input type="text" id="city_input" name="city_name" value="{{ config.city_name }}">
                     <button type="button" class="btn-search" onclick="lookupCoords()">📍 Buscar</button>
                 </div>
 
                 <div class="row-group">
-                    <div>
-                        <label>🧭 Lat</label>
-                        <input type="text" id="lat_field" name="lat" value="{{ config.lat }}">
-                    </div>
-                    <div>
-                        <label>🧭 Lon</label>
-                        <input type="text" id="lon_field" name="lon" value="{{ config.lon }}">
-                    </div>
+                    <div><label>🧭 Lat</label><input type="text" id="lat_field" name="lat" value="{{ config.lat }}"></div>
+                    <div><label>🧭 Lon</label><input type="text" id="lon_field" name="lon" value="{{ config.lon }}"></div>
                 </div>
 
-                <div class="section-title">📺 {{ tr.ui_display or 'Aparência' }}</div>
-
-                <label>🕒 {{ tr.ui_timezone }}</label>
+                <div class="section-title">📺 Display</div>
+                <label>🕒 Timezone</label>
                 <input type="text" name="timezone" value="{{ config.timezone }}">
 
                 <div class="row-group">
                     <div>
-                        <label>🌗 {{ tr.ui_theme }}</label>
+                        <label>🌗 Tema</label>
                         <select name="theme_mode">
-                            <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>✨ {{ tr.ui_opt_auto or 'Auto' }}</option>
-                            <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>☀️ {{ tr.ui_opt_light or 'Claro' }}</option>
-                            <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>🌑 {{ tr.ui_opt_dark or 'Escuro' }}</option>
+                            <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>Auto</option>
+                            <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>Claro</option>
+                            <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>Escuro</option>
                         </select>
                     </div>
-                    <div>
-                        <label>📏 {{ tr.ui_font_size }}</label>
-                        <input type="number" name="font_size" value="{{ config.font_size }}">
-                    </div>
+                    <div><label>📏 Fonte</label><input type="number" name="font_size" value="{{ config.font_size }}"></div>
                 </div>
 
-                <label>🔄 {{ tr.ui_rotation }}</label>
+                <label>🔄 Rotação</label>
                 <select name="rotation">
-                    <option value="0" {% if config.rotation == 0 %}selected{% endif %}>📱 {{ tr.ui_opt_portrait or 'Retrato' }}</option>
-                    <option value="1" {% if config.rotation == 1 %}selected{% endif %}>📟 {{ tr.ui_opt_landscape or 'Paisagem' }}</option>
-                    <option value="2" {% if config.rotation == 2 %}selected{% endif %}>🙃 Invertido</option>
+                    <option value="0" {% if config.rotation == 0 %}selected{% endif %}>📱 Retrato (0°)</option>
+                    <option value="1" {% if config.rotation == 1 %}selected{% endif %}>📟 Paisagem (90°)</option>
+                    <option value="2" {% if config.rotation == 2 %}selected{% endif %}>🙃 Invertido (180°)</option>
+                    <option value="3" {% if config.rotation == 3 %}selected{% endif %}>📟 Paisagem Rev (270°)</option>
                 </select>
 
                 <button type="submit" class="btn-save">💾 {{ tr.ui_save }}</button>
             </form>
         </div>
     </div>
-
     <script>
         async function lookupCoords() {
             const city = document.getElementById('city_input').value;
-            if (!city) {
-                alert("Por favor, digite o nome de uma cidade.");
-                return;
-            }
-
+            if (!city) return;
             const btn = document.querySelector('.btn-search');
-            btn.innerText = "⌛...";
-
+            btn.innerText = "...";
             try {
                 const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`);
                 const data = await response.json();
-
-                if (data && data.length > 0) {
+                if (data.length > 0) {
                     document.getElementById('lat_field').value = parseFloat(data[0].lat).toFixed(4);
                     document.getElementById('lon_field').value = parseFloat(data[0].lon).toFixed(4);
-                    btn.innerText = "✅ OK";
-                    setTimeout(() => btn.innerText = "📍 Buscar", 2000);
-                } else {
-                    alert("Cidade não encontrada.");
-                    btn.innerText = "📍 Buscar";
+                    btn.innerText = "✅";
                 }
-            } catch (error) {
-                alert("Erro ao buscar coordenadas.");
-                btn.innerText = "📍 Buscar";
-            }
+            } catch (e) { btn.innerText = "❌"; }
+            setTimeout(() => btn.innerText = "📍 Buscar", 2000);
         }
     </script>
 </body>
