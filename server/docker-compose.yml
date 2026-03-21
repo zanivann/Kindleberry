@@ -9,18 +9,18 @@ services:
       - proxy_network
     ports:
       - "5000:5000"
-    devices:
-      - "/dev/gpiomem:/dev/gpiomem"
-      - "/dev/gpiochip4:/dev/gpiochip4"
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/Sao_Paulo
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/gpiochip0:/dev/gpiochip0"
+      - "/dev/gpiochip4:/dev/gpiochip4"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /sys:/sys:ro
-      # Mapeamos apenas a pasta raiz. 
-      # Como os ícones e o config estão dentro de /server no Pi, 
-      # eles aparecerão automaticamente em /app no container.
+      # Mapeamento vital para o sensor DS18B20
+      - /sys/bus/w1/devices:/sys/bus/w1/devices:ro
       - /DATA/AppData/kindleberry/server:/app
     labels:
       - "traefik.enable=true"

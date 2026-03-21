@@ -27,7 +27,7 @@ slave_data = {
 
 try:
     from dht_reader import DHTReader
-    sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 4)
+    sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 17)
 except Exception:
     sensor_client = None
 

@@ -3,3 +3,4 @@ psutil
 Pillow
 requests
 w1thermsensor
+gpiod
