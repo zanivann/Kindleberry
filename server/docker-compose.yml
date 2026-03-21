@@ -1,7 +1,7 @@
 version: "3.8"
 services:
   kindleberry:
-    image: ghcr.io/zanivann/kindleberry:latest
+    image: ghcr.io/zanivann/kindleberry-server:latest
     container_name: kindleberry
     restart: unless-stopped
     privileged: true

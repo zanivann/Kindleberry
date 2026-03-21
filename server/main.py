@@ -27,7 +27,8 @@ slave_data = {
 
 try:
     from dht_reader import DHTReader
-    sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 17)
+    # Corrigido para pino 4 para evitar conflito com o DS18B20 no 17
+    sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 4)
 except Exception:
     sensor_client = None
 
@@ -159,7 +160,7 @@ def get_weather(lat, lon):
     except:
         return "--", "Erro API", "cloudy", 1, None
 
-# --- FUNÇÕES DE DESENHO ---
+# --- FUNÇÕES DE DESENHO CORRIGIDAS ---
 def draw_sparkline(draw, x, y, w, h, data, label, font_val, font_axis, color):
     draw.line((x, y, x, y+h), fill=color, width=3)
     draw.line((x, y+h, x+w, y+h), fill=color, width=3)
@@ -167,11 +168,13 @@ def draw_sparkline(draw, x, y, w, h, data, label, font_val, font_axis, color):
     if data:
         max_v = max(data) if max(data) > 10 else 10
         y_lbl = f"{max_v/1024:.1f}M" if max_v > 1024 else f"{int(max_v)}K"
+        # Ajustado: font= explicitamente
         draw.text((x - 10, y), y_lbl, font=font_axis, fill=color, anchor="rm")
         points = [(x + (i * step_x), (y + h) - ((val / max_v) * h)) for i, val in enumerate(data)]
         if len(points) > 1: draw.line(points, fill=color, width=3)
         curr = data[-1]
         val_str = f"{curr/1024:.1f} MB/s" if curr > 1024 else f"{int(curr)} KB/s"
+        # Ajustado: font= explicitamente
         draw.text((x, y-35), f"{label}: {val_str}", font=font_val, fill=color)
 
 def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
@@ -179,8 +182,9 @@ def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
     curr = start + ((end - start) * (percent / 100))
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=end, fill=color, width=3)
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16 if radius > 80 else 10)
+    # Ajustado: font= explicitamente
     draw.text((x, y), f"{int(percent)}%", font=font_val, fill=color, anchor="mm")
-    draw.text((x, y+radius+40), label, font_label, fill=color, anchor="mm")
+    draw.text((x, y+radius+40), label, font=font_label, fill=color, anchor="mm")
 
 # --- ROTAS ---
 @app.route('/report', methods=['POST'])
