@@ -27,7 +27,7 @@ slave_data = {
 
 try:
     from dht_reader import DHTReader
-    # Corrigido para pino 4 para evitar conflito com o DS18B20 no 17
+    # Pino 4 para o DHT22
     sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 4)
 except Exception:
     sensor_client = None
@@ -66,7 +66,7 @@ def load_config():
     default = {
         "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", 
         "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", 
-        "dark_mode": False, "brightness": 10,
+        "theme_mode": "auto", "language": "pt_BR", "brightness": 10,
         "sensor_main": "online", "sensor_ext": "none"
     }
     if not os.path.exists(CONFIG_FILE): return default
@@ -79,7 +79,10 @@ def load_config():
     except: return default
 
 def save_config(data):
-    with open(CONFIG_FILE, 'w') as f: json.dump(data, f, indent=4)
+    try:
+        with open(CONFIG_FILE, 'w') as f: json.dump(data, f, indent=4)
+    except Exception as e:
+        print(f"Erro ao salvar config: {e}")
 
 def load_translation_file():
     global CURRENT_LANG
@@ -168,13 +171,11 @@ def draw_sparkline(draw, x, y, w, h, data, label, font_val, font_axis, color):
     if data:
         max_v = max(data) if max(data) > 10 else 10
         y_lbl = f"{max_v/1024:.1f}M" if max_v > 1024 else f"{int(max_v)}K"
-        # Ajustado: font= explicitamente
         draw.text((x - 10, y), y_lbl, font=font_axis, fill=color, anchor="rm")
         points = [(x + (i * step_x), (y + h) - ((val / max_v) * h)) for i, val in enumerate(data)]
         if len(points) > 1: draw.line(points, fill=color, width=3)
         curr = data[-1]
         val_str = f"{curr/1024:.1f} MB/s" if curr > 1024 else f"{int(curr)} KB/s"
-        # Ajustado: font= explicitamente
         draw.text((x, y-35), f"{label}: {val_str}", font=font_val, fill=color)
 
 def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
@@ -182,7 +183,6 @@ def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
     curr = start + ((end - start) * (percent / 100))
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=end, fill=color, width=3)
     draw.arc([x-radius, y-radius, x+radius, y+radius], start=start, end=curr, fill=color, width=16 if radius > 80 else 10)
-    # Ajustado: font= explicitamente
     draw.text((x, y), f"{int(percent)}%", font=font_val, fill=color, anchor="mm")
     draw.text((x, y+radius+40), label, font=font_label, fill=color, anchor="mm")
 
@@ -208,7 +208,10 @@ def serve_dashboard():
 
         conf, tr_data = load_config(), load_translation_file()
         W, H = 1448, 1072
-        BG, FG = (0, 255) if conf.get('dark_mode') else (255, 0)
+        BG, FG = (0, 255) if conf.get('theme_mode') == 'dark' else (255, 0)
+        
+        # Lógica automática de tema baseada no horário ou API poderia ser inserida aqui
+        
         img = Image.new('L', (W, H), BG)
         draw = ImageDraw.Draw(img)
 
@@ -247,25 +250,28 @@ def serve_dashboard():
         now = datetime.datetime.now()
         moon_icon, moon_key = get_moon_phase()
 
-        # Desenho Esquerda
+        # --- DESENHO ESQUERDA (LAYOUT ESPAÇADO v2.1.7) ---
         draw.text((60, 60), now.strftime("%H:%M"), font=f_huge, fill=FG)
         draw.text((60, 220), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
         draw.text((60, 320), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
         
-        # Temperatura Principal (Interno/Main)
+        # Temperatura Principal
         draw.text((60, 520), f"{temp_main}°C", font=f_huge, fill=FG)
         
-        y_cursor = 620
+        # Cursor vertical ajustado para evitar sobreposição (descendo um pouco)
+        y_cursor = 650 
+        
         # Temperatura Secundária (Externo/Ext)
         if sensor_ext != "none" and temp_sec:
             draw.text((60, y_cursor), f"Ext: {temp_sec}°C", font=f_med, fill=FG)
-            y_cursor += 60
+            y_cursor += 70 # Aumentado de 60
             
         # Umidade
         if hum_main and hum_main != "--":
             draw.text((60, y_cursor), f"{t('lbl_humidity')}: {hum_main}%", font=f_med, fill=FG)
-            y_cursor += 60
+            y_cursor += 70 # Aumentado de 60
             
+        # Status Text (Ex: Parcialmente Nublado)
         draw.text((60, y_cursor), status_main, font=f_med if not hum_main else f_tiny, fill=FG)
 
         # Ícones
@@ -276,7 +282,7 @@ def serve_dashboard():
                 m_bg = Image.new("RGBA", m_img.size, (BG, BG, BG, 255))
                 m_bg.alpha_composite(m_img)
                 m_final = m_bg.convert("L")
-                if conf.get('dark_mode'): m_final = ImageOps.invert(m_final)
+                if conf.get('theme_mode') == 'dark': m_final = ImageOps.invert(m_final)
                 img.paste(m_final, (610, 50))
                 draw.text((660, 160), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
     
@@ -297,10 +303,10 @@ def serve_dashboard():
                 i_bg = Image.new("RGBA", i_img.size, (BG, BG, BG, 255))
                 i_bg.alpha_composite(i_img)
                 i_final = i_bg.convert("L")
-                if conf.get('dark_mode'): i_final = ImageOps.invert(i_final)
+                if conf.get('theme_mode') == 'dark': i_final = ImageOps.invert(i_final)
                 img.paste(i_final, (60, 740))
 
-        # Desenho Direita - Adaptativo e Redimensionado
+        # --- DESENHO DIREITA ---
         draw.line((724, 50, 724, 1022), fill=FG, width=4)
         cx = 1086
         fan_rpm = get_fan_speed()
@@ -347,27 +353,35 @@ def serve_dashboard():
         response = send_file(buf, mimetype='image/png')
         response.headers['X-Brightness'] = str(conf.get('brightness', 10))
         return response
-    except:
+    except Exception:
         traceback.print_exc()
         return "Erro", 500
 
 @app.route('/update', methods=['POST'])
 def update():
-    c = load_config()
-    for k in ['city_name', 'timezone', 'lat', 'lon']:
-        if k in request.form: c[k] = request.form[k]
-    
-    if 'brightness' in request.form: c['brightness'] = int(request.form['brightness'])
-    
-    c['rotation'] = int(request.form.get('rotation', 1))
-    c['font_size'] = int(request.form.get('font_size', 120))
-    c['dark_mode'] = 'dark_mode' in request.form
-    
-    if 'sensor_main' in request.form: c['sensor_main'] = request.form['sensor_main']
-    if 'sensor_ext' in request.form: c['sensor_ext'] = request.form['sensor_ext']
+    try:
+        c = load_config()
+        # Uso de .get() para evitar KeyError e validação de tipos
+        for k in ['city_name', 'timezone', 'lat', 'lon', 'language', 'theme_mode', 'sensor_main', 'sensor_ext']:
+            if k in request.form: c[k] = request.form[k]
+        
+        if 'brightness' in request.form: 
+            try: c['brightness'] = int(request.form['brightness'])
+            except: pass
+            
+        if 'rotation' in request.form:
+            try: c['rotation'] = int(request.form['rotation'])
+            except: pass
+            
+        if 'font_size' in request.form:
+            try: c['font_size'] = int(request.form['font_size'])
+            except: pass
 
-    save_config(c)
-    return redirect('/')
+        save_config(c)
+        return redirect('/')
+    except Exception as e:
+        print(f"Erro no /update: {e}")
+        return "Erro Interno ao Salvar", 500
 
 @app.route('/toggle_status', methods=['POST'])
 def toggle_status():
