@@ -1,5 +1,5 @@
 import psutil, socket, requests, io, datetime, time, json, os, glob, threading, traceback
-from flask import Flask, send_file, request, render_template, redirect
+from flask import Flask, send_file, request, render_template, redirect, jsonify
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from w1thermsensor import W1ThermSensor
 
@@ -49,9 +49,9 @@ def update_sensor_background():
                 t_ext = ds_sensor.get_temperature()
                 latest_sensor_data["ext_temp"] = f"{t_ext:.1f}"
                 
-                # Controle da Noctua
-                if fan:
-                    c = load_config()
+                # Controle da Noctua local (apenas se for main)
+                c = load_config()
+                if fan and c.get("fan_node") == "main":
                     t_min = float(c.get("fan_temp_min", 35.0))
                     t_max = float(c.get("fan_temp_max", 50.0))
                     
@@ -61,8 +61,11 @@ def update_sensor_background():
                     
                     fan.value = speed
                     current_fan_speed = speed
+                elif fan:
+                    fan.value = 0.0 # Mantém desligado se for slave ou none
+                    current_fan_speed = 0.0
             except Exception: 
-                if fan:
+                if fan and load_config().get("fan_node") == "main":
                     fan.value = 1.0
                     current_fan_speed = 1.0
         time.sleep(5)
@@ -75,7 +78,7 @@ ICONS_DIR = os.path.join(BASE_DIR, "icons")
 if not os.path.exists(ICONS_DIR): os.makedirs(ICONS_DIR)
 
 def load_config():
-    default = {"rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Ext", "label_ext": "Int", "fan_temp_min": 35.0, "fan_temp_max": 50.0}
+    default = {"rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Ext", "label_ext": "Int", "fan_node": "none", "fan_temp_min": 35.0, "fan_temp_max": 50.0}
     try:
         if not os.path.exists(CONFIG_FILE): return default
         with open(CONFIG_FILE, 'r') as f:
@@ -154,7 +157,14 @@ def report():
         slave_data.update({"cpu": data.get("cpu", 0), "ram": data.get("ram", 0), "temp": data.get("temp", 0.0), "fan": data.get("fan"), "last_seen": time.time()})
         slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
         if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
-    return "OK"
+    
+    # Responde com as diretrizes térmicas para o agente
+    c = load_config()
+    return jsonify({
+        "fan_node": c.get("fan_node", "none"),
+        "fan_temp_min": c.get("fan_temp_min", 35.0),
+        "fan_temp_max": c.get("fan_temp_max", 50.0)
+    })
 
 @app.route('/check_status')
 def check_status(): return "RUN" if DASH_ACTIVE else "STOP"
@@ -240,7 +250,7 @@ def serve_dashboard():
         draw.line((724, 50, 724, 1022), fill=FG, width=4); cx = 1086
         
         rack_t = latest_sensor_data.get('ext_temp', '--')
-        fan_p = int(current_fan_speed * 100) if current_fan_speed is not None else "--"
+        fan_p = int(current_fan_speed * 100) if conf.get("fan_node") == "main" else slave_data.get("fan") or "--"
         h_info = f"IP: {get_ip()} | Bat: {kindle_bat or '--'}% | Rack: {rack_t}°C | Fan: {fan_p}% | {now.strftime('%H:%M:%S')}"
         draw.text((740, 60), h_info, font=f_tiny, fill=FG)
 
@@ -272,7 +282,7 @@ def serve_dashboard():
 @app.route('/update', methods=['POST'])
 def update():
     c = load_config()
-    fields = ['city_name', 'lat', 'lon', 'timezone', 'language', 'theme_mode', 'sensor_main', 'sensor_ext', 'label_main', 'label_ext']
+    fields = ['city_name', 'lat', 'lon', 'timezone', 'language', 'theme_mode', 'sensor_main', 'sensor_ext', 'label_main', 'label_ext', 'fan_node']
     for k in fields:
         if k in request.form: c[k] = request.form[k]
         

@@ -98,8 +98,9 @@
                 <div class="section-title">🌬️ Controle Térmico (Rack)</div>
                 <label>🖥️ Nó de Controle</label>
                 <select name="fan_node">
-                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>Main (Este Dispositivo)</option>
-                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>Slave (Nó Secundário)</option>
+                    <option value="none" {% if config.fan_node == 'none' %}selected{% endif %}>❌ Desativado</option>
+                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>🖥️ Main (Este Dispositivo)</option>
+                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>🖧 Slave (Nó Secundário)</option>
                 </select>
                 <div class="row-group">
                     <div>
