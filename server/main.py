@@ -3,8 +3,14 @@ from flask import Flask, send_file, request, render_template, redirect
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from w1thermsensor import W1ThermSensor
 
+try:
+    from gpiozero import PWMOutputDevice
+except ImportError:
+    PWMOutputDevice = None
+
 # --- ESTADO GLOBAL ---
 latest_sensor_data = {"temp": "--", "hum": "--", "ext_temp": "--"}
+current_fan_speed = 0.0
 DASH_ACTIVE = True
 CURRENT_LANG = {}
 last_net_io, last_net_time, net_history = None, 0, []
@@ -22,8 +28,14 @@ except Exception as e:
 try: ds_sensor = W1ThermSensor()
 except Exception: ds_sensor = None
 
+try: 
+    fan = PWMOutputDevice(18, frequency=100) if PWMOutputDevice else None
+except Exception as e: 
+    print(f"✗ [HARDWARE] Erro Fan PWM: {e}")
+    fan = None
+
 def update_sensor_background():
-    global latest_sensor_data
+    global latest_sensor_data, current_fan_speed
     while True:
         if sensor_client:
             try:
@@ -33,9 +45,27 @@ def update_sensor_background():
                     latest_sensor_data["hum"] = f"{h:.1f}"
             except Exception: pass
         if ds_sensor:
-            try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
-            except Exception: pass
-        time.sleep(15)
+            try: 
+                t_ext = ds_sensor.get_temperature()
+                latest_sensor_data["ext_temp"] = f"{t_ext:.1f}"
+                
+                # Controle da Noctua
+                if fan:
+                    c = load_config()
+                    t_min = float(c.get("fan_temp_min", 35.0))
+                    t_max = float(c.get("fan_temp_max", 50.0))
+                    
+                    if t_ext >= t_max: speed = 1.0
+                    elif t_ext <= t_min: speed = 0.2
+                    else: speed = 0.2 + (0.8 * ((t_ext - t_min) / (t_max - t_min)))
+                    
+                    fan.value = speed
+                    current_fan_speed = speed
+            except Exception: 
+                if fan:
+                    fan.value = 1.0
+                    current_fan_speed = 1.0
+        time.sleep(5)
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,7 +75,7 @@ ICONS_DIR = os.path.join(BASE_DIR, "icons")
 if not os.path.exists(ICONS_DIR): os.makedirs(ICONS_DIR)
 
 def load_config():
-    default = {"rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Ext", "label_ext": "Int"}
+    default = {"rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Ext", "label_ext": "Int", "fan_temp_min": 35.0, "fan_temp_max": 50.0}
     try:
         if not os.path.exists(CONFIG_FILE): return default
         with open(CONFIG_FILE, 'r') as f:
@@ -141,7 +171,7 @@ def serve_dashboard():
         f_huge = ImageFont.truetype(f_p, conf.get('font_size', 120))
         f_city = ImageFont.truetype(f_p, 90); f_med = ImageFont.truetype(f_p, 45)
         f_graph = ImageFont.truetype(f_p, 32); f_tiny = ImageFont.truetype(f_p, 24)
-        f_label = ImageFont.truetype(f_p, 35) # Fonte pequena para prefixos
+        f_label = ImageFont.truetype(f_p, 35) 
 
         temp_on, cond_txt, icon_url = get_weather(conf['lat'], conf['lon'])
         moon_icon, moon_key = get_moon_phase()
@@ -155,7 +185,7 @@ def serve_dashboard():
         v1, h1, st1 = get_v(conf['sensor_main']); v2, h2, st2 = get_v(conf['sensor_ext'])
         now = datetime.datetime.now(); update_net_stats()
 
-        # --- UI ESQUERDA (LABELS MINIMALISTAS v2.4.1) ---
+        # --- UI ESQUERDA ---
         draw.text((60, 40), now.strftime("%H:%M"), font=f_huge, fill=FG)
         draw.text((60, 190), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
         draw.text((60, 280), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
@@ -165,7 +195,7 @@ def serve_dashboard():
         # Sensor 1
         label1 = f"{conf.get('label_main','')}: "
         l_w1 = draw.textlength(label1, font=f_label)
-        draw.text((60, ptr + 65), label1, font=f_label, fill=FG) # Alinhado à base da temperatura
+        draw.text((60, ptr + 65), label1, font=f_label, fill=FG) 
         draw.text((60 + l_w1, ptr), f"{v1}°C", font=f_huge, fill=FG)
         ptr += 145 
         
@@ -177,7 +207,6 @@ def serve_dashboard():
             draw.text((60 + l_w2, ptr), f"{v2}°C", font=f_huge, fill=FG)
             ptr += 145
 
-        # Umidade (Ortografia corrigida)
         h_val = h1 if conf['sensor_main'] == "dht" else h2 if conf['sensor_ext'] == "dht" else None
         if h_val and h_val != "--":
             draw.text((60, ptr), f"Umidade: {h_val}%", font=f_med, fill=FG); ptr += 70
@@ -209,7 +238,10 @@ def serve_dashboard():
 
         # --- UI DIREITA ---
         draw.line((724, 50, 724, 1022), fill=FG, width=4); cx = 1086
-        h_info = f"IP: {get_ip()} | Bat: {kindle_bat or '--'}% | {now.strftime('%H:%M:%S')}"
+        
+        rack_t = latest_sensor_data.get('ext_temp', '--')
+        fan_p = int(current_fan_speed * 100) if current_fan_speed is not None else "--"
+        h_info = f"IP: {get_ip()} | Bat: {kindle_bat or '--'}% | Rack: {rack_t}°C | Fan: {fan_p}% | {now.strftime('%H:%M:%S')}"
         draw.text((740, 60), h_info, font=f_tiny, fill=FG)
 
         y_m = 205
@@ -243,7 +275,14 @@ def update():
     fields = ['city_name', 'lat', 'lon', 'timezone', 'language', 'theme_mode', 'sensor_main', 'sensor_ext', 'label_main', 'label_ext']
     for k in fields:
         if k in request.form: c[k] = request.form[k]
-    c.update({"font_size": int(request.form.get('font_size', 120)), "brightness": int(request.form.get('brightness', 10)), "rotation": int(request.form.get('rotation', 1))})
+        
+    c.update({
+        "font_size": int(request.form.get('font_size', 120)), 
+        "brightness": int(request.form.get('brightness', 10)), 
+        "rotation": int(request.form.get('rotation', 1)),
+        "fan_temp_min": float(request.form.get('fan_temp_min', 35.0)),
+        "fan_temp_max": float(request.form.get('fan_temp_max', 50.0))
+    })
     save_config(c); return redirect('/')
 
 @app.route('/toggle_status', methods=['POST'])

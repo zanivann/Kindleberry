@@ -95,6 +95,23 @@
                     <div><label>🧭 Lon</label><input type="text" id="lon_field" name="lon" value="{{ config.lon }}"></div>
                 </div>
 
+                <div class="section-title">🌬️ Controle Térmico (Rack)</div>
+                <label>🖥️ Nó de Controle</label>
+                <select name="fan_node">
+                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>Main (Este Dispositivo)</option>
+                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>Slave (Nó Secundário)</option>
+                </select>
+                <div class="row-group">
+                    <div>
+                        <label>❄️ Temp. Mínima (°C)</label>
+                        <input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min | default(35.0) }}">
+                    </div>
+                    <div>
+                        <label>🔥 Temp. Máxima (°C)</label>
+                        <input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max | default(50.0) }}">
+                    </div>
+                </div>
+
                 <div class="section-title">📺 Display</div>
                 <label>🕒 Timezone</label>
                 <input type="text" name="timezone" value="{{ config.timezone }}">

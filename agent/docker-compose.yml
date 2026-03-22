@@ -4,9 +4,9 @@ services:
   agent:
     build: .
     container_name: kindleberry_agent
-    # Partilha a rede para ler o tráfego (up/down) do host
     network_mode: "host"
-    # Monta os sensores térmicos e de ventoinhas em modo leitura
+    privileged: true # Necessário para acesso direto ao hardware GPIO via Docker
     volumes:
       - /sys:/sys:ro
+      - /dev:/dev # Expõe os dispositivos para o rpi-lgpio
     restart: unless-stopped
