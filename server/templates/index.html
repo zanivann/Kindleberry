@@ -22,6 +22,9 @@
         .search-group { display: flex; gap: 10px; align-items: flex-end; }
         .btn-search { height: 45px; padding: 0 15px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         .btn-save { background: var(--primary); color: #fff; padding: 14px; width: 100%; border: none; cursor: pointer; border-radius: 8px; font-size: 16px; font-weight: bold; margin-top: 25px; }
+        .log-entry { font-size: 0.75em; display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed #ddd; }
+        .log-val { font-weight: bold; }
+        .log-dt { color: #888; }
     </style>
 </head>
 <body>
@@ -84,7 +87,38 @@
                     </select>
                 </div>
 
-                <label>🏙️ {{ tr.ui_city }}</label>
+                <div class="section-title">📊 Últimos 3 Recordes (Logs)</div>
+                <div class="row-group" style="align-items: flex-start;">
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+                        <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🏠 INTERNO</label>
+                        <div style="margin-top:5px;">
+                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
+                            {% for log in config.hist_int_max_log %}
+                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
+                            {% endfor %}
+                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
+                            {% for log in config.hist_int_min_log %}
+                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+                        <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🧊 EXTERNO</label>
+                        <div style="margin-top:5px;">
+                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
+                            {% for log in config.hist_ext_max_log %}
+                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
+                            {% endfor %}
+                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
+                            {% for log in config.hist_ext_min_log %}
+                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" form="resetForm" class="btn-toggle" style="background: #95a5a6; font-size: 12px; padding: 5px; margin-top: 5px; width: auto;">🗑️ Limpar Histórico</button>
+
+                <div class="section-title">🏙️ {{ tr.ui_city }}</div>
                 <div class="search-group">
                     <input type="text" id="city_input" name="city_name" value="{{ config.city_name }}">
                     <button type="button" class="btn-search" onclick="lookupCoords()">📍 Buscar</button>
@@ -139,6 +173,7 @@
 
                 <button type="submit" class="btn-save">💾 {{ tr.ui_save }}</button>
             </form>
+            <form id="resetForm" action="/reset_history" method="POST" style="display:none;"></form>
         </div>
     </div>
     <script>

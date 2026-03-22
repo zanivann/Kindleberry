@@ -1,5 +1,5 @@
 import psutil, socket, requests, io, datetime, time, json, os, glob, threading, traceback
-from flask import Flask, send_file, request, render_template, redirect, jsonify
+from flask import Flask, send_file, request, render_template, redirect, jsonify, make_response
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from w1thermsensor import W1ThermSensor
 
@@ -34,63 +34,83 @@ except Exception as e:
     print(f"✗ [HARDWARE] Erro Fan PWM: {e}")
     fan = None
 
+def load_config():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+    default = {
+        "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", 
+        "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", 
+        "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Ext", 
+        "label_ext": "Int", "fan_node": "none", "fan_temp_min": 35.0, "fan_temp_max": 50.0,
+        "hist_int_min_log": [], "hist_int_max_log": [],
+        "hist_ext_min_log": [], "hist_ext_max_log": []
+    }
+    try:
+        if not os.path.exists(path): return default
+        with open(path, 'r') as f:
+            c = json.load(f); [c.setdefault(k, v) for k, v in default.items()]
+            return c
+    except: return default
+
+def save_config(data):
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+    with open(path, 'w') as f: json.dump(data, f, indent=4)
+
 def update_sensor_background():
     global latest_sensor_data, current_fan_speed
     while True:
-        # Leitura dos sensores para telemetria (sempre ocorre para o Dashboard)
+        c = load_config()
+        updated = False
+        now_str = datetime.datetime.now().strftime("%d/%m %H:%M")
+
+        def update_thermal_log(log_key, val, is_min):
+            log = c.get(log_key, [])
+            current_record = log[0]['val'] if log else (99.0 if is_min else -99.0)
+            # Verifica se o novo valor supera o recorde atual
+            if (is_min and val < current_record) or (not is_min and val > current_record):
+                log.insert(0, {"val": round(val, 1), "dt": now_str})
+                c[log_key] = log[:3] # Retém apenas os 3 últimos
+                return True
+            return False
+
         if sensor_client:
             try:
                 h, t_val, _ = sensor_client.read_data()
                 if t_val is not None: 
                     latest_sensor_data["temp"] = f"{t_val:.1f}"
                     latest_sensor_data["hum"] = f"{h:.1f}"
+                    # Substitua as duas linhas antigas por estas:
+                    if update_thermal_log("hist_int_min_log", t_val, True): updated = True
+                    if update_thermal_log("hist_int_max_log", t_val, False): updated = True
             except Exception: pass
         
         if ds_sensor:
             try: 
                 t_ext = ds_sensor.get_temperature()
                 latest_sensor_data["ext_temp"] = f"{t_ext:.1f}"
-                c = load_config()
-                
+                # Substitua as duas linhas antigas por estas:
+                if update_thermal_log("hist_ext_min_log", t_ext, True): updated = True
+                if update_thermal_log("hist_ext_max_log", t_ext, False): updated = True
+
                 if fan and c.get("fan_node") == "main":
                     t_min, t_max = float(c["fan_temp_min"]), float(c["fan_temp_max"])
-                    
-                    # NOVA LÓGICA DE CORTE LOCAL
-                    if t_ext <= (t_min - 10):
-                        speed = 0.0
-                    elif t_ext <= t_min:
-                        speed = 0.2
-                    else:
-                        speed = max(0.2, min(1.0, 0.2 + (0.8 * ((t_ext - t_min) / (t_max - t_min)))))
-                    
+                    if t_ext <= (t_min - 10): speed = 0.0
+                    elif t_ext <= t_min: speed = 0.2
+                    else: speed = max(0.2, min(1.0, 0.2 + (0.8 * ((t_ext - t_min) / (t_max - t_min)))))
                     fan.value = speed
                     current_fan_speed = speed
                 elif fan:
                     fan.value = 0.0 
                     current_fan_speed = 0.0
             except Exception: 
-                if fan and load_config().get("fan_node") == "main":
+                if fan and c.get("fan_node") == "main":
                     fan.value = 1.0
+                    current_fan_speed = 1.0
+        
+        if updated: save_config(c)
         time.sleep(5)
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
-ICONS_DIR = os.path.join(BASE_DIR, "icons")
-
-if not os.path.exists(ICONS_DIR): os.makedirs(ICONS_DIR)
-
-def load_config():
-    default = {"rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Ext", "label_ext": "Int", "fan_node": "none", "fan_temp_min": 35.0, "fan_temp_max": 50.0}
-    try:
-        if not os.path.exists(CONFIG_FILE): return default
-        with open(CONFIG_FILE, 'r') as f:
-            c = json.load(f); [c.setdefault(k, v) for k, v in default.items()]
-            return c
-    except: return default
-
-def save_config(data):
-    with open(CONFIG_FILE, 'w') as f: json.dump(data, f, indent=4)
 
 def load_translation_file():
     global CURRENT_LANG
@@ -157,18 +177,13 @@ def report():
     global slave_data
     if request.is_json:
         data = request.get_json()
-        # Recebe a informação do slave
         slave_data.update({
-            "cpu": data.get("cpu", 0), 
-            "ram": data.get("ram", 0), 
-            "temp": data.get("temp", 0.0), 
-            "fan": data.get("fan", 0), 
+            "cpu": data.get("cpu", 0), "ram": data.get("ram", 0), 
+            "temp": data.get("temp", 0.0), "fan": data.get("fan", 0), 
             "last_seen": time.time()
         })
         slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
         if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
-    
-    # Verifica parâmetros e informa ao slave (Resposta do POST é o "próximo ciclo" do slave)
     c = load_config()
     return jsonify({
         "fan_node": c.get("fan_node", "none"),
@@ -178,6 +193,13 @@ def report():
 
 @app.route('/check_status')
 def check_status(): return "RUN" if DASH_ACTIVE else "STOP"
+
+@app.route('/reset_history', methods=['POST'])
+def reset_history():
+    c = load_config()
+    c.update({"hist_int_min_log": [], "hist_int_max_log": [], "hist_ext_min_log": [], "hist_ext_max_log": []})
+    save_config(c)
+    return redirect('/')
 
 @app.route('/dashboard.png')
 def serve_dashboard():
@@ -288,23 +310,15 @@ def serve_dashboard():
             draw_sparkline(draw, 780, 890, 600, 70, [x[0] for x in slave_data['net_history']], "S-Down", f_tiny, f_tiny, FG)
             draw_sparkline(draw, 780, 1000, 600, 70, [x[1] for x in slave_data['net_history']], "S-Up", f_tiny, f_tiny, FG)
 
-        rot = int(conf.get('rotation', 1))
-        angle = 90 if rot == 1 else 180 if rot == 2 else 270 if rot == 3 else 0
+        rot = int(conf.get('rotation', 1)); angle = 90 if rot == 1 else 180 if rot == 2 else 270 if rot == 3 else 0
         final_img = img.rotate(angle, expand=True)
+        buf = io.BytesIO(); final_img.save(buf, 'PNG'); buf.seek(0)
 
-        buf = io.BytesIO()
-        final_img.save(buf, 'PNG')
-        buf.seek(0)
-
-        # CRIA A RESPOSTA COM O CABEÇALHO DE BRILHO
-        from flask import make_response
         response = make_response(send_file(buf, mimetype='image/png'))
         response.headers['X-Brightness'] = str(conf.get('brightness', 10))
-        
         return response
     except Exception:
-        traceback.print_exc()
-        return "Erro", 500
+        traceback.print_exc(); return "Erro", 500
 
 @app.route('/update', methods=['POST'])
 def update():
@@ -312,7 +326,6 @@ def update():
     fields = ['city_name', 'lat', 'lon', 'timezone', 'language', 'theme_mode', 'sensor_main', 'sensor_ext', 'label_main', 'label_ext', 'fan_node']
     for k in fields:
         if k in request.form: c[k] = request.form[k]
-        
     c.update({
         "font_size": int(request.form.get('font_size', 120)), 
         "brightness": int(request.form.get('brightness', 10)), 
