@@ -15,7 +15,7 @@ DASH_ACTIVE = True
 CURRENT_LANG = {}
 last_net_io, last_net_time, net_history = None, 0, []
 MAX_HISTORY = 120
-slave_data = {"last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "fan": None, "net_history": []}
+slave_data = {"last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "fan": 0, "net_history": []}
 
 try:
     from dht_reader import DHTReader
@@ -37,6 +37,7 @@ except Exception as e:
 def update_sensor_background():
     global latest_sensor_data, current_fan_speed
     while True:
+        # Leitura dos sensores para telemetria (sempre ocorre para o Dashboard)
         if sensor_client:
             try:
                 h, t_val, _ = sensor_client.read_data()
@@ -44,30 +45,32 @@ def update_sensor_background():
                     latest_sensor_data["temp"] = f"{t_val:.1f}"
                     latest_sensor_data["hum"] = f"{h:.1f}"
             except Exception: pass
+        
         if ds_sensor:
             try: 
                 t_ext = ds_sensor.get_temperature()
                 latest_sensor_data["ext_temp"] = f"{t_ext:.1f}"
-                
-                # Controle da Noctua local (apenas se for main)
                 c = load_config()
+                
                 if fan and c.get("fan_node") == "main":
-                    t_min = float(c.get("fan_temp_min", 35.0))
-                    t_max = float(c.get("fan_temp_max", 50.0))
+                    t_min, t_max = float(c["fan_temp_min"]), float(c["fan_temp_max"])
                     
-                    if t_ext >= t_max: speed = 1.0
-                    elif t_ext <= t_min: speed = 0.2
-                    else: speed = 0.2 + (0.8 * ((t_ext - t_min) / (t_max - t_min)))
+                    # NOVA LÓGICA DE CORTE LOCAL
+                    if t_ext <= (t_min - 10):
+                        speed = 0.0
+                    elif t_ext <= t_min:
+                        speed = 0.2
+                    else:
+                        speed = max(0.2, min(1.0, 0.2 + (0.8 * ((t_ext - t_min) / (t_max - t_min)))))
                     
                     fan.value = speed
                     current_fan_speed = speed
                 elif fan:
-                    fan.value = 0.0 # Mantém desligado se for slave ou none
+                    fan.value = 0.0 
                     current_fan_speed = 0.0
             except Exception: 
                 if fan and load_config().get("fan_node") == "main":
                     fan.value = 1.0
-                    current_fan_speed = 1.0
         time.sleep(5)
 
 app = Flask(__name__)
@@ -154,11 +157,18 @@ def report():
     global slave_data
     if request.is_json:
         data = request.get_json()
-        slave_data.update({"cpu": data.get("cpu", 0), "ram": data.get("ram", 0), "temp": data.get("temp", 0.0), "fan": data.get("fan"), "last_seen": time.time()})
+        # Recebe a informação do slave
+        slave_data.update({
+            "cpu": data.get("cpu", 0), 
+            "ram": data.get("ram", 0), 
+            "temp": data.get("temp", 0.0), 
+            "fan": data.get("fan", 0), 
+            "last_seen": time.time()
+        })
         slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
         if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
     
-    # Responde com as diretrizes térmicas para o agente
+    # Verifica parâmetros e informa ao slave (Resposta do POST é o "próximo ciclo" do slave)
     c = load_config()
     return jsonify({
         "fan_node": c.get("fan_node", "none"),
@@ -249,8 +259,16 @@ def serve_dashboard():
         # --- UI DIREITA ---
         draw.line((724, 50, 724, 1022), fill=FG, width=4); cx = 1086
         
-        rack_t = latest_sensor_data.get('ext_temp', '--')
-        fan_p = int(current_fan_speed * 100) if conf.get("fan_node") == "main" else slave_data.get("fan") or "--"
+        is_slave_active = (time.time() - slave_data["last_seen"] < 60)
+        
+        # Prioriza telemetria do Slave se ele for o nó designado
+        if conf.get("fan_node") == "slave" and is_slave_active:
+            rack_t = f"{slave_data['temp']:.1f}"
+            fan_p = slave_data.get('fan', 0)
+        else:
+            rack_t = latest_sensor_data.get('ext_temp', '--')
+            fan_p = int(current_fan_speed * 100)
+
         h_info = f"IP: {get_ip()} | Bat: {kindle_bat or '--'}% | Rack: {rack_t}°C | Fan: {fan_p}% | {now.strftime('%H:%M:%S')}"
         draw.text((740, 60), h_info, font=f_tiny, fill=FG)
 
@@ -258,7 +276,6 @@ def serve_dashboard():
         draw_gauge(draw, cx - 160, y_m, 85, psutil.cpu_percent(), "MASTER CPU", f_graph, f_tiny, FG)
         draw_gauge(draw, cx + 160, y_m, 85, psutil.virtual_memory().percent, "MASTER RAM", f_graph, f_tiny, FG)
         
-        is_slave_active = (time.time() - slave_data["last_seen"] < 60)
         y_d_m = 350
         draw_sparkline(draw, 780, y_d_m, 600, 70 if is_slave_active else 150, [x[0] for x in net_history], "M-Down", f_med if not is_slave_active else f_tiny, f_tiny, FG)
         if not is_slave_active:
@@ -275,9 +292,19 @@ def serve_dashboard():
         angle = 90 if rot == 1 else 180 if rot == 2 else 270 if rot == 3 else 0
         final_img = img.rotate(angle, expand=True)
 
-        buf = io.BytesIO(); final_img.save(buf, 'PNG'); buf.seek(0)
-        return send_file(buf, mimetype='image/png')
-    except: traceback.print_exc(); return "Erro", 500
+        buf = io.BytesIO()
+        final_img.save(buf, 'PNG')
+        buf.seek(0)
+
+        # CRIA A RESPOSTA COM O CABEÇALHO DE BRILHO
+        from flask import make_response
+        response = make_response(send_file(buf, mimetype='image/png'))
+        response.headers['X-Brightness'] = str(conf.get('brightness', 10))
+        
+        return response
+    except Exception:
+        traceback.print_exc()
+        return "Erro", 500
 
 @app.route('/update', methods=['POST'])
 def update():
