@@ -57,6 +57,40 @@
                     <output style="font-weight: bold; flex: 0.5; text-align: right;">{{ config.brightness }}</output>
                 </div>
 
+                <div class="section-title">📊 Últimos 3 Recordes (Logs)</div>
+                <div class="row-group" style="align-items: flex-start;">
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+                        <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🏠 INTERNO</label>
+                        <div style="margin-top:5px;">
+                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
+                            {% for log in config.hist_int_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
+                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
+                            {% for log in config.hist_int_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
+                        </div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+                        <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🧊 EXTERNO</label>
+                        <div style="margin-top:5px;">
+                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
+                            {% for log in config.hist_ext_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
+                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
+                            {% for log in config.hist_ext_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
+                        </div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+                        <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🖥️ RACK / 🌬️</label>
+                        <div style="margin-top:5px;">
+                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase;">T. Máx (Rack)</div>
+                            {% for log in config.hist_rack_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
+                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">V. Máx (Fan)</div>
+                            {% for log in config.hist_fan_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}%</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
+                            <div style="color: #3498db; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">V. Mín (Fan)</div>
+                            {% for log in config.hist_fan_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}%</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" form="resetForm" class="btn-toggle" style="background: #95a5a6; font-size: 11px; padding: 6px; margin-top: 5px; width: auto; font-weight: bold;">🗑️ Limpar Histórico</button>
+
                 <div class="section-title">📍 Sensores</div>
                 <label>🏠 Sensor 1 (Destaque)</label>
                 <div class="row-group">
@@ -64,11 +98,11 @@
                         <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>🌐 Online</option>
                         <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
                         <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
+                        <option value="slave" {% if config.sensor_main == 'slave' %}selected{% endif %}>🖧 Slave</option>
                     </select>
                     <select name="label_main">
                         <option value="Int" {% if config.label_main == 'Int' %}selected{% endif %}>Interno</option>
                         <option value="Ext" {% if config.label_main == 'Ext' %}selected{% endif %}>Externo</option>
-                        <option value="" {% if config.label_main == '' %}selected{% endif %}>Nenhum</option>
                     </select>
                 </div>
 
@@ -79,44 +113,25 @@
                         <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>🌐 Online</option>
                         <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
                         <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
+                        <option value="slave" {% if config.sensor_ext == 'slave' %}selected{% endif %}>🖧 Slave</option>
                     </select>
                     <select name="label_ext">
                         <option value="Int" {% if config.label_ext == 'Int' %}selected{% endif %}>Interno</option>
                         <option value="Ext" {% if config.label_ext == 'Ext' %}selected{% endif %}>Externo</option>
-                        <option value="" {% if config.label_ext == '' %}selected{% endif %}>Nenhum</option>
                     </select>
                 </div>
 
-                <div class="section-title">📊 Últimos 3 Recordes (Logs)</div>
-                <div class="row-group" style="align-items: flex-start;">
-                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
-                        <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🏠 INTERNO</label>
-                        <div style="margin-top:5px;">
-                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
-                            {% for log in config.hist_int_max_log %}
-                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
-                            {% endfor %}
-                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
-                            {% for log in config.hist_int_min_log %}
-                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
-                        <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🧊 EXTERNO</label>
-                        <div style="margin-top:5px;">
-                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
-                            {% for log in config.hist_ext_max_log %}
-                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
-                            {% endfor %}
-                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
-                            {% for log in config.hist_ext_min_log %}
-                                <div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>
-                            {% endfor %}
-                        </div>
-                    </div>
+                <div class="section-title">🌬️ Controle Térmico (Rack)</div>
+                <label>🖥️ Nó de Controle</label>
+                <select name="fan_node">
+                    <option value="none" {% if config.fan_node == 'none' %}selected{% endif %}>❌ Desativado</option>
+                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>🖥️ Main</option>
+                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>🖧 Slave</option>
+                </select>
+                <div class="row-group">
+                    <div><label>❄️ Temp. Mínima (°C)</label><input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min }}"></div>
+                    <div><label>🔥 Temp. Máxima (°C)</label><input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max }}"></div>
                 </div>
-                <button type="submit" form="resetForm" class="btn-toggle" style="background: #95a5a6; font-size: 12px; padding: 5px; margin-top: 5px; width: auto;">🗑️ Limpar Histórico</button>
 
                 <div class="section-title">🏙️ {{ tr.ui_city }}</div>
                 <div class="search-group">
@@ -127,24 +142,6 @@
                 <div class="row-group">
                     <div><label>🧭 Lat</label><input type="text" id="lat_field" name="lat" value="{{ config.lat }}"></div>
                     <div><label>🧭 Lon</label><input type="text" id="lon_field" name="lon" value="{{ config.lon }}"></div>
-                </div>
-
-                <div class="section-title">🌬️ Controle Térmico (Rack)</div>
-                <label>🖥️ Nó de Controle</label>
-                <select name="fan_node">
-                    <option value="none" {% if config.fan_node == 'none' %}selected{% endif %}>❌ Desativado</option>
-                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>🖥️ Main (Este Dispositivo)</option>
-                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>🖧 Slave (Nó Secundário)</option>
-                </select>
-                <div class="row-group">
-                    <div>
-                        <label>❄️ Temp. Mínima (°C)</label>
-                        <input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min | default(35.0) }}">
-                    </div>
-                    <div>
-                        <label>🔥 Temp. Máxima (°C)</label>
-                        <input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max | default(50.0) }}">
-                    </div>
                 </div>
 
                 <div class="section-title">📺 Display</div>

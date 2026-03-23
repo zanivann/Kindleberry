@@ -45,17 +45,36 @@ def update_fan_speed(current_temp):
 
 print("Agente iniciado. Iniciando loop de telemetria...")
 
+# Variáveis para cálculo de rede
+last_net_io = psutil.net_io_counters()
+last_net_time = time.time()
+
 try:
     while True:
         temp = get_rack_temp()
         report_temp = temp if temp is not None else 0.0
 
-        # Payload com o status atual antes da atualização
+        # Cálculo de rede do Slave
+        now = time.time()
+        io_now = psutil.net_io_counters()
+        dt = now - last_net_time
+        
+        if dt > 0:
+            net_down = (io_now.bytes_recv - last_net_io.bytes_recv) / dt / 1024
+            net_up = (io_now.bytes_sent - last_net_io.bytes_sent) / dt / 1024
+        else:
+            net_down, net_up = 0.0, 0.0
+            
+        last_net_io, last_net_time = io_now, now
+
+        # Payload com o status atual atualizado
         payload = {
             "cpu": psutil.cpu_percent(), 
             "ram": psutil.virtual_memory().percent, 
             "temp": report_temp, 
-            "fan": int(fan.value * 100) if fan else 0
+            "fan": int(fan.value * 100) if fan else 0,
+            "net_down": net_down,
+            "net_up": net_up
         }
         
         try:
@@ -66,8 +85,7 @@ try:
                 fan_temp_max = float(conf.get('fan_temp_max', 50.0))
                 node_permission = conf.get('fan_node', 'none')
                 
-                # LOG DE DEBUG PARA O SR. VER NO TERMINAL
-                print(f"📡 Master -> Min: {fan_temp_min} | Max: {fan_temp_max} | Nó: {node_permission}")
+                print(f"📡 Master -> Min: {fan_temp_min} | Max: {fan_temp_max} | Nó: {node_permission} | Rede: {net_down:.1f}↓ {net_up:.1f}↑ KB/s")
         except Exception as e:
             print(f"✗ Falha na conexão: {e}")
             node_permission = "none"

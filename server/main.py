@@ -10,6 +10,8 @@ except ImportError:
 
 # --- ESTADO GLOBAL ---
 latest_sensor_data = {"temp": "--", "hum": "--", "ext_temp": "--"}
+temp_online = "--"
+cond_online = "Buscando..."
 current_fan_speed = 0.0
 DASH_ACTIVE = True
 CURRENT_LANG = {}
@@ -17,32 +19,31 @@ last_net_io, last_net_time, net_history = None, 0, []
 MAX_HISTORY = 120
 slave_data = {"last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "fan": 0, "net_history": []}
 
+# --- HARDWARE INIT ---
 try:
     from dht_reader import DHTReader
     sensor_client = DHTReader("DHT22", "/dev/gpiochip4", 17)
-    print("✓ [HARDWARE] DHT22 OK no GPIO 17")
-except Exception as e:
-    print(f"✗ [HARDWARE] Erro DHT22: {e}")
-    sensor_client = None
+    print("✓ [HARDWARE] DHT22 OK")
+except Exception: sensor_client = None
 
 try: ds_sensor = W1ThermSensor()
 except Exception: ds_sensor = None
 
-try: 
-    fan = PWMOutputDevice(18, frequency=100) if PWMOutputDevice else None
-except Exception as e: 
-    print(f"✗ [HARDWARE] Erro Fan PWM: {e}")
-    fan = None
+try: fan = PWMOutputDevice(18, frequency=100) if PWMOutputDevice else None
+except Exception: fan = None
 
+# --- GESTÃO DE CONFIGURAÇÃO ---
 def load_config():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
     default = {
         "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", 
         "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", 
-        "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Ext", 
-        "label_ext": "Int", "fan_node": "none", "fan_temp_min": 35.0, "fan_temp_max": 50.0,
+        "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Int", 
+        "label_ext": "Ext", "fan_node": "none", "fan_temp_min": 35.0, "fan_temp_max": 50.0,
         "hist_int_min_log": [], "hist_int_max_log": [],
-        "hist_ext_min_log": [], "hist_ext_max_log": []
+        "hist_ext_min_log": [], "hist_ext_max_log": [],
+        "hist_rack_min_log": [], "hist_rack_max_log": [],
+        "hist_fan_min_log": [], "hist_fan_max_log": []
     }
     try:
         if not os.path.exists(path): return default
@@ -55,62 +56,87 @@ def save_config(data):
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
     with open(path, 'w') as f: json.dump(data, f, indent=4)
 
+# --- AUXILIARES DE DADOS ---
+def get_sensor_value(sensor_key):
+    if sensor_key == "online": return temp_online
+    if sensor_key == "dht": return latest_sensor_data["temp"]
+    if sensor_key == "ds18": return latest_sensor_data["ext_temp"]
+    if sensor_key == "slave": 
+        return f"{slave_data['temp']:.1f}" if (time.time() - slave_data['last_seen'] < 60) else "--"
+    return "--"
+
+def update_thermal_log(config, log_key, val, is_min):
+    if val == "--" or val is None: return False
+    log = config.get(log_key, [])
+    try: val_f = float(val)
+    except: return False
+    current_record = log[0]['val'] if log else (999.0 if is_min else -999.0)
+    if (is_min and val_f < current_record) or (not is_min and val_f > current_record):
+        now_str = datetime.datetime.now().strftime("%d/%m %H:%M")
+        log.insert(0, {"val": round(val_f, 1), "dt": now_str}); config[log_key] = log[:3]
+        return True
+    return False
+
+def get_weather_data(lat, lon):
+    global temp_online, cond_online
+    try:
+        r = requests.get(f"http://api.weatherapi.com/v1/current.json?key=4df7b3293f31480b96c115457261002&q={lat},{lon}&lang=pt", timeout=5).json()
+        temp_online, cond_online = r['current']['temp_c'], r['current']['condition']['text']
+        return temp_online, cond_online, "https:" + r['current']['condition']['icon']
+    except: return "--", "Erro API", None
+
+# --- SENTINELA (THREAD DE BACKGROUND) ---
 def update_sensor_background():
     global latest_sensor_data, current_fan_speed
+    last_weather_check = 0
     while True:
-        c = load_config()
-        updated = False
-        now_str = datetime.datetime.now().strftime("%d/%m %H:%M")
-
-        def update_thermal_log(log_key, val, is_min):
-            log = c.get(log_key, [])
-            current_record = log[0]['val'] if log else (99.0 if is_min else -99.0)
-            # Verifica se o novo valor supera o recorde atual
-            if (is_min and val < current_record) or (not is_min and val > current_record):
-                log.insert(0, {"val": round(val, 1), "dt": now_str})
-                c[log_key] = log[:3] # Retém apenas os 3 últimos
-                return True
-            return False
+        c = load_config(); updated = False
+        if time.time() - last_weather_check > 900:
+            get_weather_data(c['lat'], c['lon']); last_weather_check = time.time()
 
         if sensor_client:
             try:
                 h, t_val, _ = sensor_client.read_data()
-                if t_val is not None: 
-                    latest_sensor_data["temp"] = f"{t_val:.1f}"
-                    latest_sensor_data["hum"] = f"{h:.1f}"
-                    # Substitua as duas linhas antigas por estas:
-                    if update_thermal_log("hist_int_min_log", t_val, True): updated = True
-                    if update_thermal_log("hist_int_max_log", t_val, False): updated = True
+                if t_val is not None: latest_sensor_data["temp"], latest_sensor_data["hum"] = f"{t_val:.1f}", f"{h:.1f}"
             except Exception: pass
-        
         if ds_sensor:
-            try: 
-                t_ext = ds_sensor.get_temperature()
-                latest_sensor_data["ext_temp"] = f"{t_ext:.1f}"
-                # Substitua as duas linhas antigas por estas:
-                if update_thermal_log("hist_ext_min_log", t_ext, True): updated = True
-                if update_thermal_log("hist_ext_max_log", t_ext, False): updated = True
+            try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
+            except Exception: pass
 
-                if fan and c.get("fan_node") == "main":
-                    t_min, t_max = float(c["fan_temp_min"]), float(c["fan_temp_max"])
-                    if t_ext <= (t_min - 10): speed = 0.0
-                    elif t_ext <= t_min: speed = 0.2
-                    else: speed = max(0.2, min(1.0, 0.2 + (0.8 * ((t_ext - t_min) / (t_max - t_min)))))
-                    fan.value = speed
-                    current_fan_speed = speed
-                elif fan:
-                    fan.value = 0.0 
-                    current_fan_speed = 0.0
-            except Exception: 
-                if fan and c.get("fan_node") == "main":
-                    fan.value = 1.0
-                    current_fan_speed = 1.0
+        # 1. LOGS: Mapeamento baseado nas Labels
+        v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
+        val_for_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
+        if update_thermal_log(c, "hist_int_min_log", val_for_int, True): updated = True
+        if update_thermal_log(c, "hist_int_max_log", val_for_int, False): updated = True
+
+        val_for_ext = v_main if c['label_main'] == "Ext" else (v_ext if c['label_ext'] == "Ext" else "--")
+        if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
+        if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
+
+        # 2. CONTROLE TÉRMICO E LOG DO RACK
+        target_temp = "--"
+        if c.get("fan_node") == "main": target_temp = latest_sensor_data["ext_temp"]
+        elif c.get("fan_node") == "slave": target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
+
+        if target_temp != "--":
+            if update_thermal_log(c, "hist_rack_min_log", target_temp, True): updated = True
+            if update_thermal_log(c, "hist_rack_max_log", target_temp, False): updated = True
+
+            if fan and c.get("fan_node") == "main":
+                try:
+                    t_val = float(target_temp); t_min, t_max = float(c["fan_temp_min"]), float(c["fan_temp_max"])
+                    speed = max(0.2, min(1.0, 0.2 + (0.8 * ((t_val - t_min) / (t_max - t_min))))) if t_val > t_min else (0.0 if t_val <= t_min-10 else 0.2)
+                    fan.value = speed; current_fan_speed = speed
+                    if update_thermal_log(c, "hist_fan_min_log", speed*100, True): updated = True
+                    if update_thermal_log(c, "hist_fan_max_log", speed*100, False): updated = True
+                except: pass
         
         if updated: save_config(c)
         time.sleep(5)
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ICONS_DIR = os.path.join(BASE_DIR, "icons")
 
 def load_translation_file():
     global CURRENT_LANG
@@ -135,12 +161,6 @@ def get_moon_phase():
     icons = ["moon_new", "moon_waxing_crescent", "moon_first_quarter", "moon_waxing_gibbous", "moon_full", "moon_waning_gibbous", "moon_last_quarter", "moon_waning_crescent"]
     phases = ["m_new", "m_wax_cresc", "m_first_q", "m_wax_gib", "m_full", "m_wan_gib", "m_last_q", "m_wan_cresc"]
     return icons[index], phases[index]
-
-def get_weather(lat, lon):
-    try:
-        r = requests.get(f"http://api.weatherapi.com/v1/current.json?key=4df7b3293f31480b96c115457261002&q={lat},{lon}&lang=pt", timeout=3).json()
-        curr = r['current']; return curr['temp_c'], curr['condition']['text'], "https:" + curr['condition']['icon']
-    except: return "--", "Erro API", None
 
 def draw_gauge(draw, x, y, radius, percent, label, font_val, font_label, color):
     start, end = 135, 405; curr = start + ((end - start) * (percent / 100))
@@ -177,29 +197,86 @@ def report():
     global slave_data
     if request.is_json:
         data = request.get_json()
-        slave_data.update({
-            "cpu": data.get("cpu", 0), "ram": data.get("ram", 0), 
-            "temp": data.get("temp", 0.0), "fan": data.get("fan", 0), 
-            "last_seen": time.time()
-        })
+        f_s = data.get("fan", 0); t_s = data.get("temp", 0.0)
+        slave_data.update({"cpu": data.get("cpu", 0), "ram": data.get("ram", 0), "temp": t_s, "fan": f_s, "last_seen": time.time()})
         slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
         if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
+        
+        c = load_config(); upd = False
+        if c.get("fan_node") == "slave":
+            if update_thermal_log(c, "hist_fan_min_log", f_s, True): upd = True
+            if update_thermal_log(c, "hist_fan_max_log", f_s, False): upd = True
+            if upd: save_config(c)
     c = load_config()
-    return jsonify({
-        "fan_node": c.get("fan_node", "none"),
-        "fan_temp_min": c.get("fan_temp_min", 35.0),
-        "fan_temp_max": c.get("fan_temp_max", 50.0)
-    })
+    return jsonify({"fan_node": c.get("fan_node", "none"), "fan_temp_min": c.get("fan_temp_min", 35.0), "fan_temp_max": c.get("fan_temp_max", 50.0)})
 
 @app.route('/check_status')
 def check_status(): return "RUN" if DASH_ACTIVE else "STOP"
 
+@app.route('/toggle_status', methods=['POST'])
+def toggle_status():
+    global DASH_ACTIVE; DASH_ACTIVE = not DASH_ACTIVE; return redirect('/')
+
 @app.route('/reset_history', methods=['POST'])
 def reset_history():
     c = load_config()
-    c.update({"hist_int_min_log": [], "hist_int_max_log": [], "hist_ext_min_log": [], "hist_ext_max_log": []})
-    save_config(c)
-    return redirect('/')
+    for k in ["hist_int_min_log", "hist_int_max_log", "hist_ext_min_log", "hist_ext_max_log", "hist_fan_min_log", "hist_fan_max_log", "hist_rack_min_log", "hist_rack_max_log"]: c[k] = []
+    save_config(c); return redirect('/')
+    
+@app.route('/api/stats')
+def api_stats():
+    conf = load_config()
+    is_s_act = (time.time() - slave_data["last_seen"] < 60)
+    now = datetime.datetime.now()
+    
+    # Cálculo de rede atual (Master)
+    net_down, net_up = update_net_stats()
+
+    stats = {
+        "system_master": {
+            "hostname": socket.gethostname(),
+            "ip": get_ip(),
+            "cpu_usage": f"{psutil.cpu_percent()}%",
+            "ram_usage": f"{psutil.virtual_memory().percent}%",
+            "net_down": f"{net_down:.1f} KB/s",
+            "net_up": f"{net_up:.1f} KB/s",
+            "uptime_reference": now.strftime("%Y-%m-%d %H:%M:%S")
+        },
+        "system_slave": {
+            "status": "Online" if is_s_act else "Offline",
+            "last_seen": datetime.datetime.fromtimestamp(slave_data["last_seen"]).strftime("%H:%M:%S") if slave_data["last_seen"] > 0 else "N/A",
+            "cpu_usage": f"{slave_data['cpu']}%",
+            "ram_usage": f"{slave_data['ram']}%",
+            "temp": f"{slave_data['temp']:.1f}°C",
+            "fan_speed": f"{slave_data['fan']}%"
+        },
+        "weather": {
+            "city": conf.get("city_name"),
+            "temp_online": f"{temp_online}°C",
+            "condition": cond_online,
+            "coords": f"{conf.get('lat')}, {conf.get('lon')}",
+            "moon_phase": t(get_moon_phase()[1])
+        },
+        "environment": {
+            "internal_temp": f"{latest_sensor_data['temp']}°C",
+            "internal_hum": f"{latest_sensor_data['hum']}%",
+            "external_temp": f"{latest_sensor_data['ext_temp']}°C",
+            "humidity_status": "- Ideal" if (latest_sensor_data['hum'] != "--" and 40 <= float(latest_sensor_data['hum']) <= 60) else "- Alerta"
+        },
+        "rack_control": {
+            "active_node": conf.get("fan_node"),
+            "current_fan_speed": f"{int(current_fan_speed * 100)}%",
+            "target_temp_min": f"{conf.get('fan_temp_min')}°C",
+            "target_temp_max": f"{conf.get('fan_temp_max')}°C"
+        },
+        "history_top_records": {
+            "internal_max": conf.get("hist_int_max_log", [])[:1],
+            "external_max": conf.get("hist_ext_max_log", [])[:1],
+            "rack_max": conf.get("hist_rack_max_log", [])[:1],
+            "fan_max": conf.get("hist_fan_max_log", [])[:1]
+        }
+    }
+    return jsonify(stats)
 
 @app.route('/dashboard.png')
 def serve_dashboard():
@@ -208,54 +285,24 @@ def serve_dashboard():
         W, H = 1448, 1072; BG, FG = (0, 255) if conf.get('theme_mode') == 'dark' else (255, 0)
         img = Image.new('L', (W, H), BG); draw = ImageDraw.Draw(img)
 
-        # FONTES
         f_p = os.path.join(BASE_DIR, "fonts", "Roboto-Bold.ttf")
         f_huge = ImageFont.truetype(f_p, conf.get('font_size', 120))
-        f_city = ImageFont.truetype(f_p, 90); f_med = ImageFont.truetype(f_p, 45)
-        f_graph = ImageFont.truetype(f_p, 32); f_tiny = ImageFont.truetype(f_p, 24)
-        f_label = ImageFont.truetype(f_p, 35) 
+        f_city = ImageFont.truetype(f_p, 90); f_med = ImageFont.truetype(f_p, 45); f_tiny = ImageFont.truetype(f_p, 24)
+        f_label = ImageFont.truetype(f_p, 35); f_graph = ImageFont.truetype(f_p, 32)
 
-        temp_on, cond_txt, icon_url = get_weather(conf['lat'], conf['lon'])
+        t_api, cond_api, icon_url = get_weather_data(conf['lat'], conf['lon'])
         moon_icon, moon_key = get_moon_phase()
 
-        def get_v(s):
-            if s == "online": return temp_on, None, cond_txt
+        def get_display_val(s):
+            if s == "online": return t_api, None, cond_api
             if s == "dht": return latest_sensor_data["temp"], latest_sensor_data["hum"], "Interno"
             if s == "ds18": return latest_sensor_data["ext_temp"], None, "Externo"
-            return None, None, None
+            if s == "slave": return (f"{slave_data['temp']:.1f}" if time.time()-slave_data['last_seen']<60 else "--"), None, "Slave"
+            return "--", None, "--"
 
-        v1, h1, st1 = get_v(conf['sensor_main']); v2, h2, st2 = get_v(conf['sensor_ext'])
+        v1, h1, st1 = get_display_val(conf['sensor_main']); v2, h2, st2 = get_display_val(conf['sensor_ext'])
         now = datetime.datetime.now(); update_net_stats()
 
-        # --- UI ESQUERDA ---
-        draw.text((60, 40), now.strftime("%H:%M"), font=f_huge, fill=FG)
-        draw.text((60, 190), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
-        draw.text((60, 280), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
-        
-        ptr = 410 
-        
-        # Sensor 1
-        label1 = f"{conf.get('label_main','')}: "
-        l_w1 = draw.textlength(label1, font=f_label)
-        draw.text((60, ptr + 65), label1, font=f_label, fill=FG) 
-        draw.text((60 + l_w1, ptr), f"{v1}°C", font=f_huge, fill=FG)
-        ptr += 145 
-        
-        # Sensor 2
-        if conf['sensor_ext'] != "none":
-            label2 = f"{conf.get('label_ext','')}: "
-            l_w2 = draw.textlength(label2, font=f_label)
-            draw.text((60, ptr + 65), label2, font=f_label, fill=FG)
-            draw.text((60 + l_w2, ptr), f"{v2}°C", font=f_huge, fill=FG)
-            ptr += 145
-
-        h_val = h1 if conf['sensor_main'] == "dht" else h2 if conf['sensor_ext'] == "dht" else None
-        if h_val and h_val != "--":
-            draw.text((60, ptr), f"Umidade: {h_val}%", font=f_med, fill=FG); ptr += 70
-        
-        draw.text((60, ptr), cond_txt, font=f_med, fill=FG); ptr += 80
-
-        # --- ÍCONES ---
         def paste_icon(icon_file, pos, size, url=None):
             p = os.path.join(ICONS_DIR, f"{icon_file}.png")
             if not os.path.exists(p) and url:
@@ -268,57 +315,69 @@ def serve_dashboard():
                 with Image.open(p) as icon_rgba:
                     icon_rgba = icon_rgba.resize(size).convert("RGBA")
                     if conf.get('theme_mode') == 'dark':
-                        r, g, b, a = icon_rgba.split()
-                        icon_rgba = Image.merge("RGBA", (ImageOps.invert(r), ImageOps.invert(g), ImageOps.invert(b), a))
+                        r_ch, g_ch, b_ch, a_ch = icon_rgba.split()
+                        icon_rgba = Image.merge("RGBA", (ImageOps.invert(r_ch), ImageOps.invert(g_ch), ImageOps.invert(b_ch), a_ch))
                     img.paste(icon_rgba.convert("L"), pos, mask=icon_rgba.split()[3])
 
-        paste_icon(moon_icon, (610, 40), (100, 100))
-        draw.text((660, 150), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
+        # --- UI ESQUERDA ---
+        draw.text((60, 40), now.strftime("%H:%M"), font=f_huge, fill=FG)
+        draw.text((60, 190), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
+        draw.text((60, 280), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
+        ptr = 410
+        l1 = f"{conf.get('label_main','')}: "; lw1 = draw.textlength(l1, font=f_label)
+        draw.text((60, ptr + 65), l1, font=f_label, fill=FG); draw.text((60 + lw1, ptr), f"{v1}°C", font=f_huge, fill=FG); ptr += 145 
+        if conf['sensor_ext'] != "none":
+            l2 = f"{conf.get('label_ext','')}: "; lw2 = draw.textlength(l2, font=f_label)
+            draw.text((60, ptr + 65), l2, font=f_label, fill=FG); draw.text((60 + lw2, ptr), f"{v2}°C", font=f_huge, fill=FG); ptr += 145
+
+        h_val = h1 if conf['sensor_main'] == "dht" else h2 if conf['sensor_ext'] == "dht" else None
+        if h_val and h_val != "--":
+            try:
+                hf = float(h_val); hst = "- Ideal" if 40 <= hf <= 60 else ("- Baixa" if hf < 40 else "- Alta")
+            except: hst = ""
+            htxt = f"Umidade: {h_val}% "; draw.text((60, ptr), htxt, font=f_med, fill=FG)
+            draw.text((60 + draw.textlength(htxt, font=f_med), ptr + 8), hst, font=f_label, fill=FG); ptr += 70
+        
+        draw.text((60, ptr), cond_api, font=f_med, fill=FG); ptr += 55
         if icon_url:
             icon_name = icon_url.split('/')[-1].replace('.png', '')
             paste_icon(icon_name, (60, ptr), (180, 180), icon_url)
 
         # --- UI DIREITA ---
         draw.line((724, 50, 724, 1022), fill=FG, width=4); cx = 1086
-        
-        is_slave_active = (time.time() - slave_data["last_seen"] < 60)
-        
-        # Prioriza telemetria do Slave se ele for o nó designado
-        if conf.get("fan_node") == "slave" and is_slave_active:
-            rack_t = f"{slave_data['temp']:.1f}"
-            fan_p = slave_data.get('fan', 0)
-        else:
-            rack_t = latest_sensor_data.get('ext_temp', '--')
-            fan_p = int(current_fan_speed * 100)
+        is_s_act = (time.time() - slave_data["last_seen"] < 60)
+        rack_t, fan_p = (f"{slave_data['temp']:.1f}", str(slave_data['fan'])) if (conf.get("fan_node") == "slave" and is_s_act) else (latest_sensor_data.get('ext_temp', '--'), str(int(current_fan_speed * 100)))
 
-        h_info = f"IP: {get_ip()} | Bat: {kindle_bat or '--'}% | Rack: {rack_t}°C | Fan: {fan_p}% | {now.strftime('%H:%M:%S')}"
-        draw.text((740, 60), h_info, font=f_tiny, fill=FG)
-
-        y_m = 205
-        draw_gauge(draw, cx - 160, y_m, 85, psutil.cpu_percent(), "MASTER CPU", f_graph, f_tiny, FG)
-        draw_gauge(draw, cx + 160, y_m, 85, psutil.virtual_memory().percent, "MASTER RAM", f_graph, f_tiny, FG)
+        curr_x, y_p = 740, 60
+        header_pts = [(f"IP: {get_ip()} | Bat: {kindle_bat or '--'}% | Rack: ", f_tiny), (f"{rack_t} C", f_med), (" | Fan: ", f_tiny), (f"{fan_p}%", f_med)]
+        for txt, fnt in header_pts:
+            draw.text((curr_x, y_p if fnt == f_tiny else y_p - 15), txt, font=fnt, fill=FG)
+            curr_x += draw.textlength(txt, font=fnt)
         
+        draw_gauge(draw, cx - 160, 205, 85, psutil.cpu_percent(), "MASTER CPU", f_graph, f_tiny, FG)
+        draw_gauge(draw, cx + 160, 205, 85, psutil.virtual_memory().percent, "MASTER RAM", f_graph, f_tiny, FG)
         y_d_m = 350
-        draw_sparkline(draw, 780, y_d_m, 600, 70 if is_slave_active else 150, [x[0] for x in net_history], "M-Down", f_med if not is_slave_active else f_tiny, f_tiny, FG)
-        if not is_slave_active:
-            draw_sparkline(draw, 780, y_d_m + 230, 600, 150, [x[1] for x in net_history], "M-Up", f_med, f_tiny, FG)
+        draw_sparkline(draw, 780, y_d_m, 600, 70 if is_s_act else 150, [x[0] for x in net_history], "M-Down", f_med if not is_s_act else f_tiny, f_tiny, FG)
+        if is_s_act:
+            draw_sparkline(draw, 780, 485, 600, 70, [x[1] for x in net_history], "M-Up", f_tiny, f_tiny, FG)
+            draw.line((740, 570, 1428, 570), fill=FG, width=2)
+            draw_gauge(draw, cx - 160, 700, 85, slave_data['cpu'], "SLAVE CPU", f_graph, f_tiny, FG)
+            draw_gauge(draw, cx + 160, 700, 85, slave_data['ram'], "SLAVE RAM", f_graph, f_tiny, FG)
+            draw_sparkline(draw, 780, 865, 600, 70, [x[0] for x in slave_data['net_history']], "S-Down", f_tiny, f_tiny, FG)
+            draw_sparkline(draw, 780, 975, 600, 70, [x[1] for x in slave_data['net_history']], "S-Up", f_tiny, f_tiny, FG)
         else:
-            draw_sparkline(draw, 780, 460, 600, 70, [x[1] for x in net_history], "M-Up", f_tiny, f_tiny, FG)
-            draw.line((740, 595, 1428, 595), fill=FG, width=2)
-            draw_gauge(draw, cx - 160, 725, 85, slave_data['cpu'], "SLAVE CPU", f_graph, f_tiny, FG)
-            draw_gauge(draw, cx + 160, 725, 85, slave_data['ram'], "SLAVE RAM", f_graph, f_tiny, FG)
-            draw_sparkline(draw, 780, 890, 600, 70, [x[0] for x in slave_data['net_history']], "S-Down", f_tiny, f_tiny, FG)
-            draw_sparkline(draw, 780, 1000, 600, 70, [x[1] for x in slave_data['net_history']], "S-Up", f_tiny, f_tiny, FG)
+            draw_sparkline(draw, 780, y_d_m + 230, 600, 150, [x[1] for x in net_history], "M-Up", f_med, f_tiny, FG)
+
+        paste_icon(moon_icon, (610, 40), (100, 100))
+        draw.text((660, 150), t(moon_key), font=f_tiny, fill=FG, anchor="mt")
 
         rot = int(conf.get('rotation', 1)); angle = 90 if rot == 1 else 180 if rot == 2 else 270 if rot == 3 else 0
         final_img = img.rotate(angle, expand=True)
         buf = io.BytesIO(); final_img.save(buf, 'PNG'); buf.seek(0)
-
-        response = make_response(send_file(buf, mimetype='image/png'))
-        response.headers['X-Brightness'] = str(conf.get('brightness', 10))
-        return response
-    except Exception:
-        traceback.print_exc(); return "Erro", 500
+        res = make_response(send_file(buf, mimetype='image/png'))
+        res.headers['X-Brightness'] = str(conf.get('brightness', 10))
+        return res
+    except Exception: traceback.print_exc(); return "Erro", 500
 
 @app.route('/update', methods=['POST'])
 def update():
@@ -326,21 +385,12 @@ def update():
     fields = ['city_name', 'lat', 'lon', 'timezone', 'language', 'theme_mode', 'sensor_main', 'sensor_ext', 'label_main', 'label_ext', 'fan_node']
     for k in fields:
         if k in request.form: c[k] = request.form[k]
-    c.update({
-        "font_size": int(request.form.get('font_size', 120)), 
-        "brightness": int(request.form.get('brightness', 10)), 
-        "rotation": int(request.form.get('rotation', 1)),
-        "fan_temp_min": float(request.form.get('fan_temp_min', 35.0)),
-        "fan_temp_max": float(request.form.get('fan_temp_max', 50.0))
-    })
+    c.update({"font_size": int(request.form.get('font_size', 120)), "brightness": int(request.form.get('brightness', 10)), "rotation": int(request.form.get('rotation', 1)), "fan_temp_min": float(request.form.get('fan_temp_min', 35.0)), "fan_temp_max": float(request.form.get('fan_temp_max', 50.0))})
     save_config(c); return redirect('/')
 
-@app.route('/toggle_status', methods=['POST'])
-def toggle_status():
-    global DASH_ACTIVE; DASH_ACTIVE = not DASH_ACTIVE; return redirect('/')
-
 @app.route('/')
-def index(): return render_template('index.html', config=load_config(), tr=load_translation_file(), dash_active=DASH_ACTIVE)
+def index(): 
+    return render_template('index.html', config=load_config(), tr=load_translation_file(), dash_active=DASH_ACTIVE)
 
 if __name__ == '__main__':
     threading.Thread(target=update_sensor_background, daemon=True).start()
