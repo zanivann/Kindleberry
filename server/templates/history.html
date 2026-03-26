@@ -2,30 +2,45 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>📜 Histórico de Telemetria</title>
+    <title>📜 Telemetria Consolidada</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; font-size: 14px; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; border: 1px solid #eee; text-align: center; }
-        th { background: #2c3e50; color: white; font-size: 12px; }
+        body { font-family: sans-serif; background: #f4f7f6; padding: 15px; margin: 0; font-size: 13px; }
+        .container { max-width: 1100px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .legend { background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.85em; color: #666; border: 1px solid #eee; }
+        summary { cursor: pointer; font-weight: bold; color: #2c3e50; margin-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; border: 1px solid #eee; text-align: center; }
+        th { background: #2c3e50; color: white; font-size: 11px; }
         tr:nth-child(even) { background: #f9f9f9; }
         .btn-back { text-decoration: none; color: #3498db; font-weight: bold; }
-        .filter-box { margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+        .filter { background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h3>📜 Telemetria Persistente</h3>
+            <h3>📜 Histórico BlackBox V4.0</h3>
             <a href="/" class="btn-back">⬅ Voltar</a>
         </div>
-        
-        <div class="filter-box">
-            <form action="/history" method="GET">
-                <label>Selecionar Data: </label>
+
+        <details class="legend">
+            <summary>ℹ️ Legenda das Siglas</summary>
+            <ul>
+                <li><strong>Int T/H:</strong> Sensor Interno (Temperatura / Umidade)</li>
+                <li><strong>Ext T:</strong> Sensor Externo (Temperatura)</li>
+                <li><strong>Rack:</strong> Temperatura do Nodo Slave</li>
+                <li><strong>Fan:</strong> Velocidade da Ventoinha (%)</li>
+                <li><strong>M-CPU/RAM:</strong> Sistema MASTER</li>
+                <li><strong>S-CPU/RAM:</strong> Sistema SLAVE</li>
+                <li><strong>Net D/U:</strong> Rede (Download / Upload KB/s)</li>
+            </ul>
+        </details>
+
+        <div class="filter">
+            <form action="/history" method="GET" style="display:flex; gap:10px; align-items:center;">
+                <label>Data:</label>
                 <input type="date" name="date" value="{{ date }}">
                 <button type="submit">Filtrar</button>
             </form>
@@ -37,8 +52,9 @@
                     <th>Hora</th>
                     <th>Int T/H</th>
                     <th>Ext T</th>
-                    <th>Slave T</th>
+                    <th>Rack</th>
                     <th>Fan</th>
+                    <th>M-CPU/RAM</th>
                     <th>S-CPU/RAM</th>
                     <th>Net D/U</th>
                 </tr>
@@ -51,15 +67,14 @@
                     <td>{{ log.ext_t or '--' }}°</td>
                     <td>{{ log.s_t or '--' }}°</td>
                     <td>{{ log.s_f or '0' }}%</td>
+                    <td>{{ log.m_c or '0' }}% / {{ log.m_r or '0' }}%</td>
                     <td>{{ log.s_c or '0' }}% / {{ log.s_r or '0' }}%</td>
                     <td>{{ "%.1f"|format(log.n_d or 0) }} / {{ "%.1f"|format(log.n_u or 0) }} K</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% if not logs %}
-            <p style="text-align: center; color: #888; margin-top: 20px;">Nenhum registro para esta data. ☕</p>
-        {% endif %}
+        {% if not logs %}<p style="text-align:center; color:#999; margin-top:20px;">Nenhum registro encontrado, Sr. ☕</p>{% endif %}
     </div>
 </body>
 </html>

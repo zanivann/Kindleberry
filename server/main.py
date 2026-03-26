@@ -10,8 +10,7 @@ except ImportError:
 
 # --- ESTADO GLOBAL ---
 latest_sensor_data = {"temp": "--", "hum": "--", "ext_temp": "--"}
-temp_online = "--"
-cond_online = "Buscando..."
+temp_online, cond_online = "--", "Buscando..."
 current_fan_speed = 0.0
 DASH_ACTIVE = True
 CURRENT_LANG = {}
@@ -20,43 +19,53 @@ MAX_HISTORY = 120
 slave_data = {"last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "fan": 0, "net_history": []}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "telemetry.db")
+# Caminho solicitado: /app/data (Mapear no Docker para /DATA/AppData/data)
+DATA_DIR = "/app/data"
+DB_PATH = os.path.join(DATA_DIR, "telemetry.db")
 
 # --- BANCO DE DADOS (BLACKBOX) ---
 def init_db():
-    """Inicializa a estrutura do banco de dados local."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS telemetry (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts DATETIME DEFAULT (datetime('now','localtime')),
-            int_t REAL, int_h REAL, ext_t REAL,
-            s_t REAL, s_f INTEGER, s_c REAL, s_r REAL,
-            n_d REAL, n_u REAL
-        )''')
-        conn.commit()
+    """Inicializa a estrutura do banco e garante que a pasta existe."""
+    try:
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR, exist_ok=True)
+        
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute('''CREATE TABLE IF NOT EXISTS telemetry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts DATETIME DEFAULT (datetime('now','localtime')),
+                int_t REAL, int_h REAL, ext_t REAL,
+                s_t REAL, s_f INTEGER, s_c REAL, s_r REAL,
+                m_c REAL, m_r REAL,
+                n_d REAL, n_u REAL
+            )''')
+            conn.commit()
+    except Exception:
+        print("Erro ao inicializar DB"); traceback.print_exc()
 
 def log_telemetry():
-    """Persiste o estado atual dos sensores no SQLite."""
+    """Captura telemetria Master/Slave e persiste no SQLite."""
     try:
         def f(v):
             try: return float(v)
             except: return None
-        
-        # Coleta dados Master/Slave e Rede
+            
+        m_c = psutil.cpu_percent()
+        m_r = psutil.virtual_memory().percent
         n_d = net_history[-1][0] if net_history else 0
         n_u = net_history[-1][1] if net_history else 0
 
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute('''INSERT INTO telemetry (
-                int_t, int_h, ext_t, s_t, s_f, s_c, s_r, n_d, n_u
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
+                int_t, int_h, ext_t, s_t, s_f, s_c, s_r, m_c, m_r, n_d, n_u
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
                 f(latest_sensor_data["temp"]), f(latest_sensor_data["hum"]), f(latest_sensor_data["ext_temp"]),
                 slave_data["temp"], slave_data["fan"], slave_data["cpu"], slave_data["ram"],
-                n_d, n_u
+                m_c, m_r, n_d, n_u
             ))
             conn.commit()
     except:
-        pass # Silêncio estoico em caso de erro de escrita
+        pass
 
 # --- HARDWARE INIT ---
 try:
@@ -95,7 +104,6 @@ def save_config(data):
     path = os.path.join(BASE_DIR, 'config.json')
     with open(path, 'w') as f: json.dump(data, f, indent=4)
 
-# --- AUXILIARES DE DADOS ---
 def get_sensor_value(sensor_key):
     if sensor_key == "online": return temp_online
     if sensor_key == "dht": return latest_sensor_data["temp"]
@@ -124,10 +132,9 @@ def get_weather_data(lat, lon):
         return temp_online, cond_online, "https:" + r['current']['condition']['icon']
     except: return "--", "Erro API", None
 
-# --- SENTINELA (THREAD DE BACKGROUND) ---
 def update_sensor_background():
     global latest_sensor_data, current_fan_speed
-    init_db() # Garante banco no boot
+    init_db()
     last_weather_check = 0
     while True:
         c = load_config(); updated = False
@@ -143,7 +150,6 @@ def update_sensor_background():
             try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
             except Exception: pass
 
-        # 1. LOGS RAM: Baseado nas Labels
         v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
         val_for_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
         if update_thermal_log(c, "hist_int_min_log", val_for_int, True): updated = True
@@ -153,7 +159,6 @@ def update_sensor_background():
         if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
         if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
 
-        # 2. CONTROLE TÉRMICO E LOG DO RACK
         target_temp = "--"
         if c.get("fan_node") == "main": target_temp = latest_sensor_data["ext_temp"]
         elif c.get("fan_node") == "slave": target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
@@ -172,10 +177,7 @@ def update_sensor_background():
                 except: pass
         
         if updated: save_config(c)
-        
-        # 3. BLACKBOX DB: Gravação a cada ciclo (10s)
         log_telemetry()
-        
         time.sleep(10)
 
 app = Flask(__name__)

@@ -34,7 +34,7 @@
 
         <div class="card">
             <div class="status-header">
-                <h3>⚡ {{ tr.ui_control or 'Controle do Sistema' }}</h3>
+                <h3>⚡ {{ tr.ui_control or 'Sistema' }}</h3>
                 <span class="badge {{ 'badge-run' if dash_active else 'badge-stop' }}">
                     {{ tr.ui_status_run if dash_active else tr.ui_status_stop }}
                 </span>
@@ -48,19 +48,19 @@
 
         <div class="card">
             <form action="/update" method="POST">
-                <label>🌍 {{ tr.ui_language or 'Idioma' }}</label>
+                <label>🌍 {{ tr.ui_language }}</label>
                 <select name="language">
                     <option value="pt_BR" {% if config.language == 'pt_BR' %}selected{% endif %}>Português (BR)</option>
                     <option value="en_US" {% if config.language == 'en_US' %}selected{% endif %}>English (US)</option>
                 </select>
 
-                <label>💡 Brilho (Nível de Luz)</label>
+                <label>💡 Brilho</label>
                 <div class="row-group" style="align-items: center;">
                     <input type="range" name="brightness" min="0" max="24" value="{{ config.brightness }}" oninput="this.nextElementSibling.innerText = this.value" style="flex: 2;">
                     <output style="font-weight: bold; flex: 0.5; text-align: right;">{{ config.brightness }}</output>
                 </div>
 
-                <div class="section-title">📊 Últimos 3 Recordes (Logs)</div>
+                <div class="section-title">📊 Últimos 3 Recordes (RAM)</div>
                 <div class="row-group" style="align-items: flex-start;">
                     <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
                         <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🏠 INTERNO</label>
@@ -94,14 +94,14 @@
                 </div>
                 <button type="submit" form="resetForm" class="btn-toggle" style="background: #95a5a6; font-size: 11px; padding: 6px; margin-top: 5px; width: auto; font-weight: bold;">🗑️ Limpar RAM de Logs</button>
 
-                <div class="section-title">📍 Mapeamento de Sensores</div>
-                <label>🏠 Sensor 1 (Destaque Dashboard)</label>
+                <div class="section-title">📍 Sensores</div>
+                <label>🏠 Sensor 1 (Destaque)</label>
                 <div class="row-group">
                     <select name="sensor_main">
-                        <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>🌐 Clima Online</option>
-                        <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>🌡️ Sensor DHT22</option>
-                        <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>🧊 Sensor DS18B20</option>
-                        <option value="slave" {% if config.sensor_main == 'slave' %}selected{% endif %}>🖧 Nodo Slave</option>
+                        <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>🌐 Online</option>
+                        <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
+                        <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
+                        <option value="slave" {% if config.sensor_main == 'slave' %}selected{% endif %}>🖧 Slave</option>
                     </select>
                     <select name="label_main">
                         <option value="Int" {% if config.label_main == 'Int' %}selected{% endif %}>Interno</option>
@@ -113,10 +113,10 @@
                 <div class="row-group">
                     <select name="sensor_ext">
                         <option value="none" {% if config.sensor_ext == 'none' %}selected{% endif %}>❌ Nenhum</option>
-                        <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>🌐 Clima Online</option>
-                        <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>🌡️ Sensor DHT22</option>
-                        <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>🧊 Sensor DS18B20</option>
-                        <option value="slave" {% if config.sensor_ext == 'slave' %}selected{% endif %}>🖧 Nodo Slave</option>
+                        <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>🌐 Online</option>
+                        <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
+                        <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
+                        <option value="slave" {% if config.sensor_ext == 'slave' %}selected{% endif %}>🖧 Slave</option>
                     </select>
                     <select name="label_ext">
                         <option value="Int" {% if config.label_ext == 'Int' %}selected{% endif %}>Interno</option>
@@ -124,19 +124,19 @@
                     </select>
                 </div>
 
-                <div class="section-title">🌬️ Controle Térmico (Hardware)</div>
-                <label>🖥️ Nó Ativo para Ventoinha</label>
+                <div class="section-title">🌬️ Controle Térmico (Rack)</div>
+                <label>🖥️ Nó de Controle</label>
                 <select name="fan_node">
                     <option value="none" {% if config.fan_node == 'none' %}selected{% endif %}>❌ Desativado</option>
-                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>🖥️ Main (Master)</option>
-                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>🖧 Slave (Rack)</option>
+                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>🖥️ Main</option>
+                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>🖧 Slave</option>
                 </select>
                 <div class="row-group">
-                    <div><label>❄️ Temp. Mín (°C)</label><input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min }}"></div>
-                    <div><label>🔥 Temp. Máx (°C)</label><input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max }}"></div>
+                    <div><label>❄️ Temp. Mínima (°C)</label><input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min }}"></div>
+                    <div><label>🔥 Temp. Máxima (°C)</label><input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max }}"></div>
                 </div>
 
-                <div class="section-title">🏙️ {{ tr.ui_city or 'Localização' }}</div>
+                <div class="section-title">🏙️ {{ tr.ui_city or 'Cidade' }}</div>
                 <div class="search-group">
                     <input type="text" id="city_input" name="city_name" value="{{ config.city_name }}">
                     <button type="button" class="btn-search" onclick="lookupCoords()">📍 Buscar</button>
@@ -147,23 +147,23 @@
                     <div><label>🧭 Lon</label><input type="text" id="lon_field" name="lon" value="{{ config.lon }}"></div>
                 </div>
 
-                <div class="section-title">📺 Configuração do Painel</div>
-                <label>🕒 Fuso Horário (Timezone)</label>
+                <div class="section-title">📺 Display</div>
+                <label>🕒 Timezone</label>
                 <input type="text" name="timezone" value="{{ config.timezone }}">
 
                 <div class="row-group">
                     <div>
-                        <label>🌗 Modo de Tema</label>
+                        <label>🌗 Tema</label>
                         <select name="theme_mode">
-                            <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>Automático</option>
-                            <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>Claro (L)</option>
-                            <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>Escuro (D)</option>
+                            <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>Auto</option>
+                            <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>Claro</option>
+                            <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>Escuro</option>
                         </select>
                     </div>
-                    <div><label>📏 Tamanho Fonte</label><input type="number" name="font_size" value="{{ config.font_size }}"></div>
+                    <div><label>📏 Fonte</label><input type="number" name="font_size" value="{{ config.font_size }}"></div>
                 </div>
 
-                <label>🔄 Rotação da Imagem</label>
+                <label>🔄 Rotação</label>
                 <select name="rotation">
                     <option value="0" {% if config.rotation == 0 %}selected{% endif %}>📱 Retrato (0°)</option>
                     <option value="1" {% if config.rotation == 1 %}selected{% endif %}>📟 Paisagem (90°)</option>
@@ -176,7 +176,6 @@
             <form id="resetForm" action="/reset_history" method="POST" style="display:none;"></form>
         </div>
     </div>
-
     <script>
         async function lookupCoords() {
             const city = document.getElementById('city_input').value;
