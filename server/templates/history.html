@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>📜 Histórico de Telemetria</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; font-size: 14px; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; border: 1px solid #eee; text-align: center; }
+        th { background: #2c3e50; color: white; font-size: 12px; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .btn-back { text-decoration: none; color: #3498db; font-weight: bold; }
+        .filter-box { margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h3>📜 Telemetria Persistente</h3>
+            <a href="/" class="btn-back">⬅ Voltar</a>
+        </div>
+        
+        <div class="filter-box">
+            <form action="/history" method="GET">
+                <label>Selecionar Data: </label>
+                <input type="date" name="date" value="{{ date }}">
+                <button type="submit">Filtrar</button>
+            </form>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Int T/H</th>
+                    <th>Ext T</th>
+                    <th>Slave T</th>
+                    <th>Fan</th>
+                    <th>S-CPU/RAM</th>
+                    <th>Net D/U</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.ts.split(' ')[1] }}</td>
+                    <td>{{ log.int_t or '--' }}° / {{ log.int_h or '--' }}%</td>
+                    <td>{{ log.ext_t or '--' }}°</td>
+                    <td>{{ log.s_t or '--' }}°</td>
+                    <td>{{ log.s_f or '0' }}%</td>
+                    <td>{{ log.s_c or '0' }}% / {{ log.s_r or '0' }}%</td>
+                    <td>{{ "%.1f"|format(log.n_d or 0) }} / {{ "%.1f"|format(log.n_u or 0) }} K</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if not logs %}
+            <p style="text-align: center; color: #888; margin-top: 20px;">Nenhum registro para esta data. ☕</p>
+        {% endif %}
+    </div>
+</body>
+</html>

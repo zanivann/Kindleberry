@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>⚙️ {{ tr.ui_title }}</title>
+    <title>⚙️ {{ tr.ui_title or 'Configurações Jarvis' }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root { --bg-color: #f4f7f6; --card-bg: #ffffff; --primary: #2c3e50; --accent: #3498db; --text: #333; --border: #dcdde1; }
@@ -22,16 +22,19 @@
         .search-group { display: flex; gap: 10px; align-items: flex-end; }
         .btn-search { height: 45px; padding: 0 15px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         .btn-save { background: var(--primary); color: #fff; padding: 14px; width: 100%; border: none; cursor: pointer; border-radius: 8px; font-size: 16px; font-weight: bold; margin-top: 25px; }
-        .log-entry { font-size: 0.75em; display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed #ddd; }
+        .log-entry { font-size: 0.72em; display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed #eee; }
         .log-val { font-weight: bold; }
         .log-dt { color: #888; }
+        .btn-db { text-decoration: none; background: var(--accent); color: white; padding: 10px 15px; border-radius: 8px; font-size: 0.85em; font-weight: bold; display: block; text-align: center; margin-bottom: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
+        <a href="/history" class="btn-db">📂 CONSULTAR HISTÓRICO (SQLITE)</a>
+
         <div class="card">
             <div class="status-header">
-                <h3>⚡ {{ tr.ui_control or 'Sistema' }}</h3>
+                <h3>⚡ {{ tr.ui_control or 'Controle do Sistema' }}</h3>
                 <span class="badge {{ 'badge-run' if dash_active else 'badge-stop' }}">
                     {{ tr.ui_status_run if dash_active else tr.ui_status_stop }}
                 </span>
@@ -45,13 +48,13 @@
 
         <div class="card">
             <form action="/update" method="POST">
-                <label>🌍 {{ tr.ui_language }}</label>
+                <label>🌍 {{ tr.ui_language or 'Idioma' }}</label>
                 <select name="language">
                     <option value="pt_BR" {% if config.language == 'pt_BR' %}selected{% endif %}>Português (BR)</option>
                     <option value="en_US" {% if config.language == 'en_US' %}selected{% endif %}>English (US)</option>
                 </select>
 
-                <label>💡 Brilho</label>
+                <label>💡 Brilho (Nível de Luz)</label>
                 <div class="row-group" style="align-items: center;">
                     <input type="range" name="brightness" min="0" max="24" value="{{ config.brightness }}" oninput="this.nextElementSibling.innerText = this.value" style="flex: 2;">
                     <output style="font-weight: bold; flex: 0.5; text-align: right;">{{ config.brightness }}</output>
@@ -62,43 +65,43 @@
                     <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
                         <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🏠 INTERNO</label>
                         <div style="margin-top:5px;">
-                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
+                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase;">Máximas</div>
                             {% for log in config.hist_int_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
-                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
+                            <div style="color: #3498db; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
                             {% for log in config.hist_int_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
                         </div>
                     </div>
                     <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
                         <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🧊 EXTERNO</label>
                         <div style="margin-top:5px;">
-                            <div style="color: #e74c3c; font-size: 0.7em; font-weight: bold; text-transform: uppercase;">Máximas</div>
+                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase;">Máximas</div>
                             {% for log in config.hist_ext_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
-                            <div style="color: #3498db; font-size: 0.7em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
+                            <div style="color: #3498db; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">Mínimas</div>
                             {% for log in config.hist_ext_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
                         </div>
                     </div>
                     <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
                         <label style="margin:0; font-size: 0.75em; text-align: center; border-bottom: 1px solid #ddd;">🖥️ RACK / 🌬️</label>
                         <div style="margin-top:5px;">
-                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase;">T. Máx (Rack)</div>
+                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase;">T. Máx (R)</div>
                             {% for log in config.hist_rack_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
-                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">V. Máx (Fan)</div>
+                            <div style="color: #e74c3c; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">V. Máx (F)</div>
                             {% for log in config.hist_fan_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}%</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
-                            <div style="color: #3498db; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">V. Mín (Fan)</div>
+                            <div style="color: #3498db; font-size: 0.65em; font-weight: bold; text-transform: uppercase; margin-top:5px;">V. Mín (F)</div>
                             {% for log in config.hist_fan_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}%</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
                         </div>
                     </div>
                 </div>
-                <button type="submit" form="resetForm" class="btn-toggle" style="background: #95a5a6; font-size: 11px; padding: 6px; margin-top: 5px; width: auto; font-weight: bold;">🗑️ Limpar Histórico</button>
+                <button type="submit" form="resetForm" class="btn-toggle" style="background: #95a5a6; font-size: 11px; padding: 6px; margin-top: 5px; width: auto; font-weight: bold;">🗑️ Limpar RAM de Logs</button>
 
-                <div class="section-title">📍 Sensores</div>
-                <label>🏠 Sensor 1 (Destaque)</label>
+                <div class="section-title">📍 Mapeamento de Sensores</div>
+                <label>🏠 Sensor 1 (Destaque Dashboard)</label>
                 <div class="row-group">
                     <select name="sensor_main">
-                        <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>🌐 Online</option>
-                        <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
-                        <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
-                        <option value="slave" {% if config.sensor_main == 'slave' %}selected{% endif %}>🖧 Slave</option>
+                        <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>🌐 Clima Online</option>
+                        <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>🌡️ Sensor DHT22</option>
+                        <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>🧊 Sensor DS18B20</option>
+                        <option value="slave" {% if config.sensor_main == 'slave' %}selected{% endif %}>🖧 Nodo Slave</option>
                     </select>
                     <select name="label_main">
                         <option value="Int" {% if config.label_main == 'Int' %}selected{% endif %}>Interno</option>
@@ -110,10 +113,10 @@
                 <div class="row-group">
                     <select name="sensor_ext">
                         <option value="none" {% if config.sensor_ext == 'none' %}selected{% endif %}>❌ Nenhum</option>
-                        <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>🌐 Online</option>
-                        <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>🌡️ DHT22</option>
-                        <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>🧊 DS18B20</option>
-                        <option value="slave" {% if config.sensor_ext == 'slave' %}selected{% endif %}>🖧 Slave</option>
+                        <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>🌐 Clima Online</option>
+                        <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>🌡️ Sensor DHT22</option>
+                        <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>🧊 Sensor DS18B20</option>
+                        <option value="slave" {% if config.sensor_ext == 'slave' %}selected{% endif %}>🖧 Nodo Slave</option>
                     </select>
                     <select name="label_ext">
                         <option value="Int" {% if config.label_ext == 'Int' %}selected{% endif %}>Interno</option>
@@ -121,19 +124,19 @@
                     </select>
                 </div>
 
-                <div class="section-title">🌬️ Controle Térmico (Rack)</div>
-                <label>🖥️ Nó de Controle</label>
+                <div class="section-title">🌬️ Controle Térmico (Hardware)</div>
+                <label>🖥️ Nó Ativo para Ventoinha</label>
                 <select name="fan_node">
                     <option value="none" {% if config.fan_node == 'none' %}selected{% endif %}>❌ Desativado</option>
-                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>🖥️ Main</option>
-                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>🖧 Slave</option>
+                    <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>🖥️ Main (Master)</option>
+                    <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>🖧 Slave (Rack)</option>
                 </select>
                 <div class="row-group">
-                    <div><label>❄️ Temp. Mínima (°C)</label><input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min }}"></div>
-                    <div><label>🔥 Temp. Máxima (°C)</label><input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max }}"></div>
+                    <div><label>❄️ Temp. Mín (°C)</label><input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min }}"></div>
+                    <div><label>🔥 Temp. Máx (°C)</label><input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max }}"></div>
                 </div>
 
-                <div class="section-title">🏙️ {{ tr.ui_city }}</div>
+                <div class="section-title">🏙️ {{ tr.ui_city or 'Localização' }}</div>
                 <div class="search-group">
                     <input type="text" id="city_input" name="city_name" value="{{ config.city_name }}">
                     <button type="button" class="btn-search" onclick="lookupCoords()">📍 Buscar</button>
@@ -144,23 +147,23 @@
                     <div><label>🧭 Lon</label><input type="text" id="lon_field" name="lon" value="{{ config.lon }}"></div>
                 </div>
 
-                <div class="section-title">📺 Display</div>
-                <label>🕒 Timezone</label>
+                <div class="section-title">📺 Configuração do Painel</div>
+                <label>🕒 Fuso Horário (Timezone)</label>
                 <input type="text" name="timezone" value="{{ config.timezone }}">
 
                 <div class="row-group">
                     <div>
-                        <label>🌗 Tema</label>
+                        <label>🌗 Modo de Tema</label>
                         <select name="theme_mode">
-                            <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>Auto</option>
-                            <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>Claro</option>
-                            <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>Escuro</option>
+                            <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>Automático</option>
+                            <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>Claro (L)</option>
+                            <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>Escuro (D)</option>
                         </select>
                     </div>
-                    <div><label>📏 Fonte</label><input type="number" name="font_size" value="{{ config.font_size }}"></div>
+                    <div><label>📏 Tamanho Fonte</label><input type="number" name="font_size" value="{{ config.font_size }}"></div>
                 </div>
 
-                <label>🔄 Rotação</label>
+                <label>🔄 Rotação da Imagem</label>
                 <select name="rotation">
                     <option value="0" {% if config.rotation == 0 %}selected{% endif %}>📱 Retrato (0°)</option>
                     <option value="1" {% if config.rotation == 1 %}selected{% endif %}>📟 Paisagem (90°)</option>
@@ -168,11 +171,12 @@
                     <option value="3" {% if config.rotation == 3 %}selected{% endif %}>📟 Paisagem Rev (270°)</option>
                 </select>
 
-                <button type="submit" class="btn-save">💾 {{ tr.ui_save }}</button>
+                <button type="submit" class="btn-save">💾 SALVAR ALTERAÇÕES</button>
             </form>
             <form id="resetForm" action="/reset_history" method="POST" style="display:none;"></form>
         </div>
     </div>
+
     <script>
         async function lookupCoords() {
             const city = document.getElementById('city_input').value;

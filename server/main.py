@@ -1,4 +1,4 @@
-import psutil, socket, requests, io, datetime, time, json, os, glob, threading, traceback
+import psutil, socket, requests, io, datetime, time, json, os, glob, threading, traceback, sqlite3
 from flask import Flask, send_file, request, render_template, redirect, jsonify, make_response
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from w1thermsensor import W1ThermSensor
@@ -19,6 +19,45 @@ last_net_io, last_net_time, net_history = None, 0, []
 MAX_HISTORY = 120
 slave_data = {"last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "fan": 0, "net_history": []}
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "telemetry.db")
+
+# --- BANCO DE DADOS (BLACKBOX) ---
+def init_db():
+    """Inicializa a estrutura do banco de dados local."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute('''CREATE TABLE IF NOT EXISTS telemetry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts DATETIME DEFAULT (datetime('now','localtime')),
+            int_t REAL, int_h REAL, ext_t REAL,
+            s_t REAL, s_f INTEGER, s_c REAL, s_r REAL,
+            n_d REAL, n_u REAL
+        )''')
+        conn.commit()
+
+def log_telemetry():
+    """Persiste o estado atual dos sensores no SQLite."""
+    try:
+        def f(v):
+            try: return float(v)
+            except: return None
+        
+        # Coleta dados Master/Slave e Rede
+        n_d = net_history[-1][0] if net_history else 0
+        n_u = net_history[-1][1] if net_history else 0
+
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute('''INSERT INTO telemetry (
+                int_t, int_h, ext_t, s_t, s_f, s_c, s_r, n_d, n_u
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
+                f(latest_sensor_data["temp"]), f(latest_sensor_data["hum"]), f(latest_sensor_data["ext_temp"]),
+                slave_data["temp"], slave_data["fan"], slave_data["cpu"], slave_data["ram"],
+                n_d, n_u
+            ))
+            conn.commit()
+    except:
+        pass # Silêncio estoico em caso de erro de escrita
+
 # --- HARDWARE INIT ---
 try:
     from dht_reader import DHTReader
@@ -34,7 +73,7 @@ except Exception: fan = None
 
 # --- GESTÃO DE CONFIGURAÇÃO ---
 def load_config():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+    path = os.path.join(BASE_DIR, 'config.json')
     default = {
         "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", 
         "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", 
@@ -53,7 +92,7 @@ def load_config():
     except: return default
 
 def save_config(data):
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+    path = os.path.join(BASE_DIR, 'config.json')
     with open(path, 'w') as f: json.dump(data, f, indent=4)
 
 # --- AUXILIARES DE DADOS ---
@@ -88,6 +127,7 @@ def get_weather_data(lat, lon):
 # --- SENTINELA (THREAD DE BACKGROUND) ---
 def update_sensor_background():
     global latest_sensor_data, current_fan_speed
+    init_db() # Garante banco no boot
     last_weather_check = 0
     while True:
         c = load_config(); updated = False
@@ -103,7 +143,7 @@ def update_sensor_background():
             try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
             except Exception: pass
 
-        # 1. LOGS: Mapeamento baseado nas Labels
+        # 1. LOGS RAM: Baseado nas Labels
         v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
         val_for_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
         if update_thermal_log(c, "hist_int_min_log", val_for_int, True): updated = True
@@ -132,10 +172,13 @@ def update_sensor_background():
                 except: pass
         
         if updated: save_config(c)
-        time.sleep(5)
+        
+        # 3. BLACKBOX DB: Gravação a cada ciclo (10s)
+        log_telemetry()
+        
+        time.sleep(10)
 
 app = Flask(__name__)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ICONS_DIR = os.path.join(BASE_DIR, "icons")
 
 def load_translation_file():
@@ -222,14 +265,20 @@ def reset_history():
     c = load_config()
     for k in ["hist_int_min_log", "hist_int_max_log", "hist_ext_min_log", "hist_ext_max_log", "hist_fan_min_log", "hist_fan_max_log", "hist_rack_min_log", "hist_rack_max_log"]: c[k] = []
     save_config(c); return redirect('/')
+
+@app.route('/history')
+def history_page():
+    date = request.args.get('date', datetime.datetime.now().strftime('%Y-%m-%d'))
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        logs = conn.execute("SELECT * FROM telemetry WHERE ts LIKE ? ORDER BY ts DESC", (f"{date}%",)).fetchall()
+    return render_template('history.html', logs=logs, date=date)
     
 @app.route('/api/stats')
 def api_stats():
     conf = load_config()
     is_s_act = (time.time() - slave_data["last_seen"] < 60)
     now = datetime.datetime.now()
-    
-    # Cálculo de rede atual (Master)
     net_down, net_up = update_net_stats()
 
     stats = {
@@ -254,26 +303,21 @@ def api_stats():
             "city": conf.get("city_name"),
             "temp_online": f"{temp_online}°C",
             "condition": cond_online,
-            "coords": f"{conf.get('lat')}, {conf.get('lon')}",
             "moon_phase": t(get_moon_phase()[1])
         },
         "environment": {
             "internal_temp": f"{latest_sensor_data['temp']}°C",
             "internal_hum": f"{latest_sensor_data['hum']}%",
-            "external_temp": f"{latest_sensor_data['ext_temp']}°C",
-            "humidity_status": "- Ideal" if (latest_sensor_data['hum'] != "--" and 40 <= float(latest_sensor_data['hum']) <= 60) else "- Alerta"
+            "external_temp": f"{latest_sensor_data['ext_temp']}°C"
         },
         "rack_control": {
             "active_node": conf.get("fan_node"),
-            "current_fan_speed": f"{int(current_fan_speed * 100)}%",
-            "target_temp_min": f"{conf.get('fan_temp_min')}°C",
-            "target_temp_max": f"{conf.get('fan_temp_max')}°C"
+            "current_fan_speed": f"{int(current_fan_speed * 100)}%"
         },
         "history_top_records": {
             "internal_max": conf.get("hist_int_max_log", [])[:1],
             "external_max": conf.get("hist_ext_max_log", [])[:1],
-            "rack_max": conf.get("hist_rack_max_log", [])[:1],
-            "fan_max": conf.get("hist_fan_max_log", [])[:1]
+            "rack_max": conf.get("hist_rack_max_log", [])[:1]
         }
     }
     return jsonify(stats)
