@@ -2,71 +2,68 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>📜 Auditoria de Telemetria</title>
+    <title>📜 Auditoria BlackBox</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 15px; font-size: 13px; color: #333; }
         .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .chart-container { height: 320px; margin-bottom: 25px; padding: 10px; border: 1px solid #eee; border-radius: 8px; }
         .filter-card { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #eee; }
         .filter-row { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
-        .filter-group { display: flex; flex-direction: column; gap: 5px; }
-        input, button { padding: 8px; border-radius: 5px; border: 1px solid #ddd; }
-        button { background: #2c3e50; color: white; border: none; cursor: pointer; font-weight: bold; padding: 8px 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        button { background: #2c3e50; color: white; border: none; cursor: pointer; font-weight: bold; padding: 8px 20px; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; }
         th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: center; }
-        th { background: #2c3e50; color: white; font-size: 11px; position: sticky; top: 0; }
+        th { background: #2c3e50; color: white; font-size: 11px; }
         th a { color: white; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 5px; }
-        tr:hover { background: #f1f1f1; }
+        .legend { background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.85em; border: 1px solid #eee; }
         .btn-back { text-decoration: none; color: #3498db; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h3>📜 Auditoria BlackBox V4.5</h3>
+        <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+            <h3>📜 Telemetria BlackBox V4.2</h3>
             <a href="/" class="btn-back">⬅ Voltar</a>
         </div>
 
+        <div class="chart-container"><canvas id="tempChart"></canvas></div>
+
         <div class="filter-card">
             <form action="/history" method="GET" class="filter-row">
-                <div class="filter-group">
-                    <label>Início</label>
-                    <div style="display:flex; gap:5px;">
-                        <input type="date" name="start_date" value="{{ start_date }}">
-                        <input type="time" name="start_time" value="{{ start_time }}">
-                    </div>
-                </div>
-                <div class="filter-group">
-                    <label>Fim</label>
-                    <div style="display:flex; gap:5px;">
-                        <input type="date" name="end_date" value="{{ end_date }}">
-                        <input type="time" name="end_time" value="{{ end_time }}">
-                    </div>
+                <div style="display:flex; gap:10px;">
+                    <div><label style="display:block; font-size:11px;">Início</label><input type="date" name="start_date" value="{{ start_date }}"><input type="time" name="start_time" value="{{ start_time }}"></div>
+                    <div><label style="display:block; font-size:11px;">Fim</label><input type="date" name="end_date" value="{{ end_date }}"><input type="time" name="end_time" value="{{ end_time }}"></div>
                 </div>
                 <button type="submit">🔍 Filtrar</button>
             </form>
         </div>
 
-        {% set current_dir = 'ASC' if dir == 'DESC' else 'DESC' %}
-        {% set base_url = '/history?start_date='~start_date~'&end_date='~end_date~'&start_time='~start_time~'&end_time='~end_time %}
-        
+        <details class="legend"><summary>ℹ️ Legenda das Siglas</summary>
+            <ul style="columns: 2;">
+                <li><strong>Int T/H:</strong> Interno (Temp/Hum)</li>
+                <li><strong>Ext T:</strong> Externo (DS18B20)</li>
+                <li><strong>Rack:</strong> Nodo Slave</li>
+                <li><strong>M-CPU/RAM:</strong> Sistema Master</li>
+                <li><strong>S-CPU/RAM:</strong> Sistema Slave</li>
+                <li><strong>Net D:</strong> Download Master (KB/s)</li>
+            </ul>
+        </details>
+
+        {% set cur_dir = 'ASC' if dir == 'DESC' else 'DESC' %}{% set base_url = '/history?start_date='~start_date~'&end_date='~end_date~'&start_time='~start_time~'&end_time='~end_time %}
         <table>
-            <thead>
-                <tr>
-                    <th><a href="{{ base_url }}&sort=ts&dir={{ current_dir }}">Hora {% if sort=='ts' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                    <th><a href="{{ base_url }}&sort=int_t&dir={{ current_dir }}">Int T/H {% if sort=='int_t' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                    <th><a href="{{ base_url }}&sort=ext_t&dir={{ current_dir }}">Ext T {% if sort=='ext_t' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                    <th><a href="{{ base_url }}&sort=s_t&dir={{ current_dir }}">Rack {% if sort=='s_t' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                    <th><a href="{{ base_url }}&sort=s_f&dir={{ current_dir }}">Fan {% if sort=='s_f' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                    <th><a href="{{ base_url }}&sort=m_c&dir={{ current_dir }}">M-CPU {% if sort=='m_c' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                    <th><a href="{{ base_url }}&sort=s_c&dir={{ current_dir }}">S-CPU {% if sort=='s_c' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                    <th><a href="{{ base_url }}&sort=n_d&dir={{ current_dir }}">Net D {% if sort=='n_d' %}{{ '▼' if dir=='DESC' else '▲' }}{% endif %}</a></th>
-                </tr>
-            </thead>
+            <thead><tr>
+                <th><a href="{{ base_url }}&sort=ts&dir={{ cur_dir }}">Hora {{ '▼' if dir=='DESC' and sort=='ts' else '▲' if sort=='ts' }}</a></th>
+                <th><a href="{{ base_url }}&sort=int_t&dir={{ cur_dir }}">Int T/H</a></th>
+                <th><a href="{{ base_url }}&sort=ext_t&dir={{ cur_dir }}">Ext T</a></th>
+                <th><a href="{{ base_url }}&sort=s_t&dir={{ cur_dir }}">Rack</a></th>
+                <th><a href="{{ base_url }}&sort=s_f&dir={{ cur_dir }}">Fan</a></th>
+                <th><a href="{{ base_url }}&sort=m_c&dir={{ cur_dir }}">M-CPU</a></th>
+                <th><a href="{{ base_url }}&sort=s_c&dir={{ cur_dir }}">S-CPU</a></th>
+                <th><a href="{{ base_url }}&sort=n_d&dir={{ cur_dir }}">Net D</a></th>
+            </tr></thead>
             <tbody>
-                {% for log in logs %}
-                <tr>
+                {% for log in logs %}<tr>
                     <td>{{ log.ts.split(' ')[1] }}</td>
                     <td>{{ log.int_t or '--' }}° / {{ log.int_h or '--' }}%</td>
                     <td>{{ log.ext_t or '--' }}°</td>
@@ -75,11 +72,24 @@
                     <td>{{ log.m_c or '0' }}%</td>
                     <td>{{ log.s_c or '0' }}%</td>
                     <td>{{ "%.1f"|format(log.n_d or 0) }} K</td>
-                </tr>
-                {% endfor %}
+                </tr>{% endfor %}
             </tbody>
         </table>
-        {% if not logs %}<p style="text-align:center; color:#999; margin-top:20px;">Nenhum dado encontrado para este intervalo, Sr. ☕</p>{% endif %}
     </div>
+
+    <script>
+        new Chart(document.getElementById('tempChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: {{ c_labels|tojson }},
+                datasets: [
+                    { label: 'Interno (°C)', data: {{ c_int|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0 },
+                    { label: 'Externo (°C)', data: {{ c_ext|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0 },
+                    { label: 'Rack (°C)', data: {{ c_rack|tojson }}, borderColor: '#27ae60', tension: 0.3, pointRadius: 0 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false } } }
+        });
+    </script>
 </body>
 </html>
