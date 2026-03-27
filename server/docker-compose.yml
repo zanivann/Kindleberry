@@ -22,6 +22,7 @@ services:
       # Mapeamento vital para o sensor DS18B20
       - /sys/bus/w1/devices:/sys/bus/w1/devices:ro
       - /DATA/AppData/kindleberry/server:/app
+      - /DATA/AppData/kindleberry/data:/app/data
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.kindleberry.rule=Host(`kindle.zanivann.com.br`)"
