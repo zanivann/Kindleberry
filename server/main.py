@@ -270,11 +270,31 @@ def reset_history():
 
 @app.route('/history')
 def history_page():
-    date = request.args.get('date', datetime.datetime.now().strftime('%Y-%m-%d'))
+    # Parâmetros de filtro
+    start_d = request.args.get('start_date', datetime.datetime.now().strftime('%Y-%m-%d'))
+    end_d = request.args.get('end_date', datetime.datetime.now().strftime('%Y-%m-%d'))
+    start_t = request.args.get('start_time', '00:00')
+    end_t = request.args.get('end_time', '23:59')
+    
+    # Parâmetros de ordenação
+    sort_col = request.args.get('sort', 'ts')
+    sort_dir = request.args.get('dir', 'DESC').upper()
+    
+    # Whitelist para evitar SQL Injection na ordenação
+    allowed_cols = ['ts', 'int_t', 'ext_t', 's_t', 's_f', 'm_c', 's_c', 'n_d']
+    if sort_col not in allowed_cols: sort_col = 'ts'
+    if sort_dir not in ['ASC', 'DESC']: sort_dir = 'DESC'
+
+    start_full = f"{start_d} {start_t}:00"
+    end_full = f"{end_d} {end_t}:59"
+
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        logs = conn.execute("SELECT * FROM telemetry WHERE ts LIKE ? ORDER BY ts DESC", (f"{date}%",)).fetchall()
-    return render_template('history.html', logs=logs, date=date)
+        query = f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}"
+        logs = conn.execute(query, (start_full, end_full)).fetchall()
+    
+    return render_template('history.html', logs=logs, start_date=start_d, end_date=end_d, 
+                           start_time=start_t, end_time=end_t, sort=sort_col, dir=sort_dir)
     
 @app.route('/api/stats')
 def api_stats():
