@@ -150,7 +150,6 @@ def update_sensor_background():
             try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
             except Exception: pass
 
-        # 1. LOGS RAM: Baseado nas Labels
         v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
         val_for_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
         if update_thermal_log(c, "hist_int_min_log", val_for_int, True): updated = True
@@ -160,7 +159,6 @@ def update_sensor_background():
         if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
         if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
 
-        # 2. CONTROLE TÉRMICO E LOG DO RACK
         target_temp = "--"
         if c.get("fan_node") == "main": target_temp = latest_sensor_data["ext_temp"]
         elif c.get("fan_node") == "slave": target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
@@ -292,11 +290,11 @@ def history_page():
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        # Query para a Tabela (segue a ordenação do usuário)
+        # Dados para a Tabela (Segue ordenação do usuário)
         query = f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}"
         logs = conn.execute(query, (start_full, end_full)).fetchall()
         
-        # Query para o Gráfico (sempre ASC/Cronológico para a linha do tempo)
+        # Dados para o Gráfico (Sempre cronológico/ASC)
         chart_query = "SELECT ts, int_t, ext_t, s_t FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC"
         chart_data = conn.execute(chart_query, (start_full, end_full)).fetchall()
     

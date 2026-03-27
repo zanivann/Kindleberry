@@ -2,13 +2,13 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>📜 Auditoria BlackBox</title>
+    <title>📜 Telemetria BlackBox</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 15px; font-size: 13px; color: #333; }
         .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .chart-container { height: 320px; margin-bottom: 25px; padding: 10px; border: 1px solid #eee; border-radius: 8px; }
+        .chart-container { height: 320px; margin-bottom: 25px; padding: 10px; border: 1px solid #eee; border-radius: 8px; background: #fff; }
         .filter-card { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #eee; }
         .filter-row { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
         button { background: #2c3e50; color: white; border: none; cursor: pointer; font-weight: bold; padding: 8px 20px; border-radius: 5px; }
@@ -83,9 +83,9 @@
             data: {
                 labels: {{ c_labels|tojson }},
                 datasets: [
-                    { label: 'Interno (°C)', data: {{ c_int|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0 },
-                    { label: 'Externo (°C)', data: {{ c_ext|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0 },
-                    { label: 'Rack (°C)', data: {{ c_rack|tojson }}, borderColor: '#27ae60', tension: 0.3, pointRadius: 0 }
+                    { label: 'Interno (°C)', data: {{ c_int|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0, spanGaps: true },
+                    { label: 'Externo (°C)', data: {{ c_ext|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0, spanGaps: true },
+                    { label: 'Rack (°C)', data: {{ c_rack|tojson }}, borderColor: '#27ae60', tension: 0.3, pointRadius: 0, spanGaps: true }
                 ]
             },
             options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false } } }
