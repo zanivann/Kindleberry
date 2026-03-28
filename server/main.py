@@ -16,16 +16,26 @@ DASH_ACTIVE = True
 CURRENT_LANG = {}
 last_net_io, last_net_time, net_history = None, 0, []
 MAX_HISTORY = 120
-slave_data = {"last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "fan": 0, "net_history": []}
+slave_data = {"last_seen": 0, "cpu": 0, "ram": 0, "temp": 0.0, "core_temp": 0.0, "fan": 0, "net_history": []}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Caminho solicitado: /app/data (Mapear no Docker para /DATA/AppData/data)
+# Caminho para persistência no host (Mapeado via Docker)
 DATA_DIR = "/app/data"
 DB_PATH = os.path.join(DATA_DIR, "telemetry.db")
 
-# --- BANCO DE DADOS (BLACKBOX) ---
+# --- AUXILIARES DE HARDWARE ---
+def get_master_cpu_temp():
+    """Lê a temperatura interna do SoC do Raspberry Pi (Master)."""
+    try:
+        temps = psutil.sensors_temperatures()
+        if 'cpu_thermal' in temps: return temps['cpu_thermal'][0].current
+        if 'bcm2835_thermal' in temps: return temps['bcm2835_thermal'][0].current
+    except: pass
+    return None
+
+# --- BANCO DE DADOS (BLACKBOX V4.3) ---
 def init_db():
-    """Inicializa a estrutura do banco e garante que a pasta existe."""
+    """Inicializa a estrutura do banco e aplica migrações para Core Temp."""
     try:
         if not os.path.exists(DATA_DIR):
             os.makedirs(DATA_DIR, exist_ok=True)
@@ -39,33 +49,45 @@ def init_db():
                 m_c REAL, m_r REAL,
                 n_d REAL, n_u REAL
             )''')
+            # Migração automática para colunas de CPU
+            cols = [('m_core_t', 'REAL'), ('s_core_t', 'REAL')]
+            for col_name, col_type in cols:
+                try: conn.execute(f'ALTER TABLE telemetry ADD COLUMN {col_name} {col_type}')
+                except: pass 
             conn.commit()
     except Exception:
         print("Erro ao inicializar DB"); traceback.print_exc()
 
 def log_telemetry():
-    """Captura telemetria Master/Slave e persiste no SQLite."""
+    """Captura telemetria completa Master/Slave e persiste no SQLite."""
     try:
         def f(v):
+            if v == "--" or v is None: return None
             try: return float(v)
             except: return None
             
+        slave_online = (time.time() - slave_data["last_seen"] < 60)
         m_c = psutil.cpu_percent()
         m_r = psutil.virtual_memory().percent
+        m_core = get_master_cpu_temp()
         n_d = net_history[-1][0] if net_history else 0
         n_u = net_history[-1][1] if net_history else 0
 
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute('''INSERT INTO telemetry (
-                int_t, int_h, ext_t, s_t, s_f, s_c, s_r, m_c, m_r, n_d, n_u
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
+                int_t, int_h, ext_t, s_t, s_f, s_c, s_r, m_c, m_r, n_d, n_u, m_core_t, s_core_t
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
                 f(latest_sensor_data["temp"]), f(latest_sensor_data["hum"]), f(latest_sensor_data["ext_temp"]),
-                slave_data["temp"], slave_data["fan"], slave_data["cpu"], slave_data["ram"],
-                m_c, m_r, n_d, n_u
+                f(slave_data["temp"]) if slave_online else None,
+                f(slave_data["fan"]) if slave_online else None,
+                f(slave_data["cpu"]) if slave_online else None,
+                f(slave_data["ram"]) if slave_online else None,
+                m_c, m_r, n_d, n_u,
+                m_core,
+                f(slave_data["core_temp"]) if slave_online else None
             ))
             conn.commit()
-    except:
-        pass
+    except: pass
 
 # --- HARDWARE INIT ---
 try:
@@ -96,14 +118,14 @@ def load_config():
     try:
         if not os.path.exists(path): return default
         with open(path, 'r') as f:
-            c = json.load(f); [c.setdefault(k, v) for k, v in default.items()]
-            return c
+            c = json.load(f); [c.setdefault(k, v) for k, v in default.items()]; return c
     except: return default
 
 def save_config(data):
     path = os.path.join(BASE_DIR, 'config.json')
     with open(path, 'w') as f: json.dump(data, f, indent=4)
 
+# --- AUXILIARES DE DADOS ---
 def get_sensor_value(sensor_key):
     if sensor_key == "online": return temp_online
     if sensor_key == "dht": return latest_sensor_data["temp"]
@@ -132,9 +154,10 @@ def get_weather_data(lat, lon):
         return temp_online, cond_online, "https:" + r['current']['condition']['icon']
     except: return "--", "Erro API", None
 
+# --- SENTINELA (THREAD DE BACKGROUND) ---
 def update_sensor_background():
     global latest_sensor_data, current_fan_speed
-    init_db() # Garante banco no boot
+    init_db()
     last_weather_check = 0
     while True:
         c = load_config(); updated = False
@@ -150,6 +173,7 @@ def update_sensor_background():
             try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
             except Exception: pass
 
+        # 1. LOGS RAM: Baseado nas Labels
         v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
         val_for_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
         if update_thermal_log(c, "hist_int_min_log", val_for_int, True): updated = True
@@ -159,6 +183,7 @@ def update_sensor_background():
         if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
         if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
 
+        # 2. CONTROLE TÉRMICO E LOG DO RACK
         target_temp = "--"
         if c.get("fan_node") == "main": target_temp = latest_sensor_data["ext_temp"]
         elif c.get("fan_node") == "slave": target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
@@ -243,7 +268,14 @@ def report():
     if request.is_json:
         data = request.get_json()
         f_s = data.get("fan", 0); t_s = data.get("temp", 0.0)
-        slave_data.update({"cpu": data.get("cpu", 0), "ram": data.get("ram", 0), "temp": t_s, "fan": f_s, "last_seen": time.time()})
+        slave_data.update({
+            "cpu": data.get("cpu", 0), 
+            "ram": data.get("ram", 0), 
+            "temp": t_s, 
+            "core_temp": data.get("core_temp", 0.0), # CORE TEMP RECEBIDA DO SLAVE
+            "fan": f_s, 
+            "last_seen": time.time()
+        })
         slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
         if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
         
@@ -252,8 +284,7 @@ def report():
             if update_thermal_log(c, "hist_fan_min_log", f_s, True): upd = True
             if update_thermal_log(c, "hist_fan_max_log", f_s, False): upd = True
             if upd: save_config(c)
-    c = load_config()
-    return jsonify({"fan_node": c.get("fan_node", "none"), "fan_temp_min": c.get("fan_temp_min", 35.0), "fan_temp_max": c.get("fan_temp_max", 50.0)})
+    return jsonify({"status": "ok"})
 
 @app.route('/check_status')
 def check_status(): return "RUN" if DASH_ACTIVE else "STOP"
@@ -270,18 +301,13 @@ def reset_history():
 
 @app.route('/history')
 def history_page():
-    # Parâmetros de filtro
     start_d = request.args.get('start_date', datetime.datetime.now().strftime('%Y-%m-%d'))
     end_d = request.args.get('end_date', datetime.datetime.now().strftime('%Y-%m-%d'))
-    start_t = request.args.get('start_time', '00:00')
-    end_t = request.args.get('end_time', '23:59')
+    start_t, end_t = request.args.get('start_time', '00:00'), request.args.get('end_time', '23:59')
+    sort_col, sort_dir = request.args.get('sort', 'ts'), request.args.get('dir', 'DESC').upper()
     
-    # Parâmetros de ordenação
-    sort_col = request.args.get('sort', 'ts')
-    sort_dir = request.args.get('dir', 'DESC').upper()
-    
-    # Whitelist para evitar SQL Injection na ordenação
-    allowed_cols = ['ts', 'int_t', 'ext_t', 's_t', 's_f', 'm_c', 's_c', 'n_d']
+    # Whitelist atualizada com temperaturas de Core
+    allowed_cols = ['ts', 'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t', 's_f', 'm_c', 's_c', 'n_d']
     if sort_col not in allowed_cols: sort_col = 'ts'
     if sort_dir not in ['ASC', 'DESC']: sort_dir = 'DESC'
 
@@ -290,71 +316,43 @@ def history_page():
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        # Dados para a Tabela (Segue ordenação do usuário)
-        query = f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}"
-        logs = conn.execute(query, (start_full, end_full)).fetchall()
-        
-        # Dados para o Gráfico (Sempre cronológico/ASC)
-        chart_query = "SELECT ts, int_t, ext_t, s_t FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC"
-        chart_data = conn.execute(chart_query, (start_full, end_full)).fetchall()
+        logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_full, end_full)).fetchall()
+        chart_data = conn.execute("SELECT ts, int_t, ext_t, s_t, m_core_t, s_core_t FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_full, end_full)).fetchall()
     
-    # Preparar listas para o Chart.js no template
-    c_labels = [r['ts'].split(' ')[1] for r in chart_data]
-    c_int = [r['int_t'] for r in chart_data]
-    c_ext = [r['ext_t'] for r in chart_data]
-    c_rack = [r['s_t'] for r in chart_data]
-
     return render_template('history.html', logs=logs, start_date=start_d, end_date=end_d, 
                            start_time=start_t, end_time=end_t, sort=sort_col, dir=sort_dir,
-                           c_labels=c_labels, c_int=c_int, c_ext=c_ext, c_rack=c_rack)
+                           c_labels=[r['ts'].split(' ')[1] for r in chart_data],
+                           c_int=[r['int_t'] for r in chart_data],
+                           c_ext=[r['ext_t'] for r in chart_data],
+                           c_rack=[r['s_t'] for r in chart_data],
+                           c_m_core=[r['m_core_t'] for r in chart_data],
+                           c_s_core=[r['s_core_t'] for r in chart_data])
     
 @app.route('/api/stats')
 def api_stats():
-    conf = load_config()
-    is_s_act = (time.time() - slave_data["last_seen"] < 60)
-    now = datetime.datetime.now()
+    conf = load_config(); is_s_act = (time.time() - slave_data["last_seen"] < 60)
     net_down, net_up = update_net_stats()
-
-    stats = {
+    return jsonify({
         "system_master": {
             "hostname": socket.gethostname(),
-            "ip": get_ip(),
+            "core_temp": f"{get_master_cpu_temp():.1f}°C" if get_master_cpu_temp() else "--",
             "cpu_usage": f"{psutil.cpu_percent()}%",
             "ram_usage": f"{psutil.virtual_memory().percent}%",
-            "net_down": f"{net_down:.1f} KB/s",
-            "net_up": f"{net_up:.1f} KB/s",
-            "uptime_reference": now.strftime("%Y-%m-%d %H:%M:%S")
+            "net_down": f"{net_down:.1f} KB/s"
         },
         "system_slave": {
             "status": "Online" if is_s_act else "Offline",
-            "last_seen": datetime.datetime.fromtimestamp(slave_data["last_seen"]).strftime("%H:%M:%S") if slave_data["last_seen"] > 0 else "N/A",
+            "core_temp": f"{slave_data['core_temp']:.1f}°C",
             "cpu_usage": f"{slave_data['cpu']}%",
-            "ram_usage": f"{slave_data['ram']}%",
             "temp": f"{slave_data['temp']:.1f}°C",
             "fan_speed": f"{slave_data['fan']}%"
-        },
-        "weather": {
-            "city": conf.get("city_name"),
-            "temp_online": f"{temp_online}°C",
-            "condition": cond_online,
-            "moon_phase": t(get_moon_phase()[1])
         },
         "environment": {
             "internal_temp": f"{latest_sensor_data['temp']}°C",
             "internal_hum": f"{latest_sensor_data['hum']}%",
             "external_temp": f"{latest_sensor_data['ext_temp']}°C"
-        },
-        "rack_control": {
-            "active_node": conf.get("fan_node"),
-            "current_fan_speed": f"{int(current_fan_speed * 100)}%"
-        },
-        "history_top_records": {
-            "internal_max": conf.get("hist_int_max_log", [])[:1],
-            "external_max": conf.get("hist_ext_max_log", [])[:1],
-            "rack_max": conf.get("hist_rack_max_log", [])[:1]
         }
-    }
-    return jsonify(stats)
+    })
 
 @app.route('/dashboard.png')
 def serve_dashboard():

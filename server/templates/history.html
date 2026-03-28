@@ -2,13 +2,13 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>📜 Telemetria BlackBox</title>
+    <title>📜 Auditoria BlackBox</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 15px; font-size: 13px; color: #333; }
-        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .chart-container { height: 320px; margin-bottom: 25px; padding: 10px; border: 1px solid #eee; border-radius: 8px; background: #fff; }
+        .container { max-width: 1400px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .chart-container { height: 400px; margin-bottom: 25px; padding: 10px; border: 1px solid #eee; border-radius: 8px; background: #fff; }
         .filter-card { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #eee; }
         .filter-row { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
         button { background: #2c3e50; color: white; border: none; cursor: pointer; font-weight: bold; padding: 8px 20px; border-radius: 5px; }
@@ -23,7 +23,7 @@
 <body>
     <div class="container">
         <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
-            <h3>📜 Telemetria BlackBox V4.2</h3>
+            <h3>📜 Telemetria BlackBox V4.3.0</h3>
             <a href="/" class="btn-back">⬅ Voltar</a>
         </div>
 
@@ -41,11 +41,14 @@
 
         <details class="legend"><summary>ℹ️ Legenda das Siglas</summary>
             <ul style="columns: 2;">
-                <li><strong>Int T/H:</strong> Interno (Temp/Hum)</li>
-                <li><strong>Ext T:</strong> Externo (DS18B20)</li>
-                <li><strong>Rack:</strong> Nodo Slave</li>
-                <li><strong>M-CPU/RAM:</strong> Sistema Master</li>
-                <li><strong>S-CPU/RAM:</strong> Sistema Slave</li>
+                <li><strong>Int T/H:</strong> Interno (DHT22)</li>
+                <li><strong>Ext T:</strong> Externo (DS18B20 Master)</li>
+                <li><strong>M-Core:</strong> CPU Master Temp</li>
+                <li><strong>S-Core:</strong> CPU Slave Temp</li>
+                <li><strong>Rack:</strong> Sensor Slave (Rack)</li>
+                <li><strong>Fan:</strong> PWM Ventoinha (%)</li>
+                <li><strong>M-CPU:</strong> Carga Master (%)</li>
+                <li><strong>S-CPU:</strong> Carga Slave (%)</li>
                 <li><strong>Net D:</strong> Download Master (KB/s)</li>
             </ul>
         </details>
@@ -56,6 +59,8 @@
                 <th><a href="{{ base_url }}&sort=ts&dir={{ cur_dir }}">Hora {{ '▼' if dir=='DESC' and sort=='ts' else '▲' if sort=='ts' }}</a></th>
                 <th><a href="{{ base_url }}&sort=int_t&dir={{ cur_dir }}">Int T/H</a></th>
                 <th><a href="{{ base_url }}&sort=ext_t&dir={{ cur_dir }}">Ext T</a></th>
+                <th><a href="{{ base_url }}&sort=m_core_t&dir={{ cur_dir }}">M-Core</a></th>
+                <th><a href="{{ base_url }}&sort=s_core_t&dir={{ cur_dir }}">S-Core</a></th>
                 <th><a href="{{ base_url }}&sort=s_t&dir={{ cur_dir }}">Rack</a></th>
                 <th><a href="{{ base_url }}&sort=s_f&dir={{ cur_dir }}">Fan</a></th>
                 <th><a href="{{ base_url }}&sort=m_c&dir={{ cur_dir }}">M-CPU</a></th>
@@ -67,6 +72,8 @@
                     <td>{{ log.ts.split(' ')[1] }}</td>
                     <td>{{ log.int_t or '--' }}° / {{ log.int_h or '--' }}%</td>
                     <td>{{ log.ext_t or '--' }}°</td>
+                    <td>{{ "%.1f"|format(log.m_core_t) if log.m_core_t else '--' }}°</td>
+                    <td>{{ "%.1f"|format(log.s_core_t) if log.s_core_t else '--' }}°</td>
                     <td>{{ log.s_t or '--' }}°</td>
                     <td>{{ log.s_f or '0' }}%</td>
                     <td>{{ log.m_c or '0' }}%</td>
@@ -83,12 +90,17 @@
             data: {
                 labels: {{ c_labels|tojson }},
                 datasets: [
-                    { label: 'Interno (°C)', data: {{ c_int|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0, spanGaps: true },
-                    { label: 'Externo (°C)', data: {{ c_ext|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0, spanGaps: true },
-                    { label: 'Rack (°C)', data: {{ c_rack|tojson }}, borderColor: '#27ae60', tension: 0.3, pointRadius: 0, spanGaps: true }
+                    { label: 'Amb. Interno (°C)', data: {{ c_int|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0, spanGaps: true },
+                    { label: 'Amb. Externo (°C)', data: {{ c_ext|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0, spanGaps: true },
+                    { label: 'Master Core (°C)', data: {{ c_m_core|tojson }}, borderColor: '#f1c40f', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
+                    { label: 'Slave Core (°C)', data: {{ c_s_core|tojson }}, borderColor: '#27ae60', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false } } }
+            options: { 
+                responsive: true, maintainAspectRatio: false, 
+                scales: { y: { beginAtZero: false, ticks: { callback: (v) => v + '°' } } },
+                plugins: { legend: { position: 'top' } }
+            }
         });
     </script>
 </body>
