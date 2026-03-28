@@ -387,8 +387,8 @@ def serve_dashboard():
             if s == "slave": return (f"{slave_data['temp']:.1f}" if time.time()-slave_data['last_seen']<60 else "--"), None, "Slave"
             return "--", None, "--"
 
-        v1, h1, st1 = get_display_val(conf['sensor_main']); v2, h2, st2 = get_display_val(conf['sensor_ext'])
-        now = datetime.datetime.now(); update_net_stats()
+        #v1, h1, st1 = get_display_val(conf['sensor_main']); v2, h2, st2 = get_display_val(conf['sensor_ext'])
+        #now = datetime.datetime.now(); update_net_stats()
 
         def paste_icon(icon_file, pos, size, url=None):
             p = os.path.join(ICONS_DIR, f"{icon_file}.png")
