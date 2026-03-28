@@ -147,6 +147,7 @@ def update_sensor_background():
     init_db()
     last_weather_check = 0
     while True:
+        update_net_stats()
         c = load_config(); updated = False
         if time.time() - last_weather_check > 900:
             get_weather_data(c['lat'], c['lon']); last_weather_check = time.time()
