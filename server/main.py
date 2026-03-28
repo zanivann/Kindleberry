@@ -327,22 +327,22 @@ def history_page():
             c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
 
         # 4. Retorno para o template com todos os arrays de multgráfico
-        return render_template('history.html', 
-            logs=logs, start_date=start_d, end_date=end_d, start_time=st_t, end_time=en_t, sort=sort_col, dir=sort_dir,
+        return render_template('history.html', logs=logs, 
+            start_date=start_d, end_date=end_d, start_time=st_t, end_time=en_t, sort=sort_col, dir=sort_dir,
             c_labels=[r['ts'].split(' ')[1] for r in c_data],
-            c_int_t=[r['int_t'] for r in c_data],
-            c_int_h=[r['int_h'] for r in c_data],
-            c_ext_t=[r['ext_t'] for r in c_data],
-            c_rack_t=[r['s_t'] for r in c_data],
-            c_m_core=[r['m_core_t'] for r in c_data],
-            c_s_core=[r['s_core_t'] for r in c_data],
-            c_m_cpu=[r['m_c'] for r in c_data],
-            c_m_ram=[r['m_r'] for r in c_data],
-            c_s_cpu=[r['s_c'] for r in c_data],
-            c_s_ram=[r['s_r'] for r in c_data],
-            c_fan=[r['s_f'] for r in c_data],
-            c_net_d=[r['n_d'] for r in c_data],
-            c_s_net_d=[r['sn_d'] for r in c_data]
+            c_int_t=[r['int_t'] if 'int_t' in r.keys() else 0 for r in c_data],
+            c_int_h=[r['int_h'] if 'int_h' in r.keys() else 0 for r in c_data],
+            c_ext_t=[r['ext_t'] if 'ext_t' in r.keys() else 0 for r in c_data],
+            c_rack_t=[r['s_t'] if 's_t' in r.keys() else 0 for r in c_data],
+            c_m_core=[r['m_core_t'] if 'm_core_t' in r.keys() else 0 for r in c_data],
+            c_s_core=[r['s_core_t'] if 's_core_t' in r.keys() else 0 for r in c_data],
+            c_m_cpu=[r['m_c'] if 'm_c' in r.keys() else 0 for r in c_data],
+            c_m_ram=[r['m_r'] if 'm_r' in r.keys() else 0 for r in c_data],
+            c_s_cpu=[r['s_c'] if 's_c' in r.keys() else 0 for r in c_data],
+            c_s_ram=[r['s_r'] if 's_r' in r.keys() else 0 for r in c_data],
+            c_fan=[r['s_f'] if 's_f' in r.keys() else 0 for r in c_data],
+            c_net_d=[r['n_d'] if 'n_d' in r.keys() else 0 for r in c_data],
+            c_s_net_d=[r['sn_d'] if 'sn_d' in r.keys() else 0 for r in c_data]
         )
     except Exception as e:
         traceback.print_exc()
