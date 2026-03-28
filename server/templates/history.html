@@ -2,106 +2,150 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>📜 Auditoria BlackBox</title>
+    <title>📜 Auditoria Master V4.5</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 15px; font-size: 13px; color: #333; }
-        .container { max-width: 1400px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .chart-container { height: 400px; margin-bottom: 25px; padding: 10px; border: 1px solid #eee; border-radius: 8px; background: #fff; }
-        .filter-card { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #eee; }
-        .filter-row { display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; }
-        button { background: #2c3e50; color: white; border: none; cursor: pointer; font-weight: bold; padding: 8px 20px; border-radius: 5px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: center; }
-        th { background: #2c3e50; color: white; font-size: 11px; }
-        th a { color: white; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 5px; }
-        .legend { background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.85em; border: 1px solid #eee; }
-        .btn-back { text-decoration: none; color: #3498db; font-weight: bold; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 15px; font-size: 12px; color: #333; }
+        .container { max-width: 1450px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #f0f0f0; padding-bottom: 15px; }
+        
+        .chart-controls { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; border: 1px solid #eee; }
+        .toggle-btn { background: #fff; border: 1px solid #ddd; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 11px; font-weight: bold; transition: 0.2s; }
+        .toggle-btn.active { background: #2c3e50; color: white; border-color: #2c3e50; }
+
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(650px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .chart-box { background: #fff; border: 1px solid #eee; padding: 15px; border-radius: 10px; height: 380px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .hidden { display: none; }
+
+        .filter-card { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .filter-row { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
+        input, button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd; }
+        button[type="submit"] { background: #2c3e50; color: white; border: none; cursor: pointer; font-weight: bold; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+        th, td { padding: 12px 8px; border-bottom: 1px solid #f0f0f0; text-align: center; }
+        th { background: #2c3e50; color: white; position: sticky; top: 0; }
+        th a { color: white; text-decoration: none; }
+        tr:hover { background: #fcfcfc; }
+        .btn-back { text-decoration: none; color: #3498db; font-weight: bold; font-size: 14px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
-            <h3>📜 Telemetria BlackBox V4.3.0</h3>
-            <a href="/" class="btn-back">⬅ Voltar</a>
+        <div class="header">
+            <h3>📜 Auditoria de Telemetria BlackBox</h3>
+            <a href="/" class="btn-back">⬅ Voltar ao Painel</a>
         </div>
-
-        <div class="chart-container"><canvas id="tempChart"></canvas></div>
 
         <div class="filter-card">
             <form action="/history" method="GET" class="filter-row">
-                <div style="display:flex; gap:10px;">
-                    <div><label style="display:block; font-size:11px;">Início</label><input type="date" name="start_date" value="{{ start_date }}"><input type="time" name="start_time" value="{{ start_time }}"></div>
-                    <div><label style="display:block; font-size:11px;">Fim</label><input type="date" name="end_date" value="{{ end_date }}"><input type="time" name="end_time" value="{{ end_time }}"></div>
+                <div><label style="display:block; font-size:10px; margin-bottom:4px;">📅 INÍCIO</label>
+                    <input type="date" name="start_date" value="{{ start_date }}">
+                    <input type="time" name="start_time" value="{{ start_time }}">
                 </div>
-                <button type="submit">🔍 Filtrar</button>
+                <div><label style="display:block; font-size:10px; margin-bottom:4px;">📅 FIM</label>
+                    <input type="date" name="end_date" value="{{ end_date }}">
+                    <input type="time" name="end_time" value="{{ end_time }}">
+                </div>
+                <button type="submit">🔍 APLICAR FILTROS</button>
             </form>
         </div>
 
-        <details class="legend"><summary>ℹ️ Legenda das Siglas</summary>
-            <ul style="columns: 2;">
-                <li><strong>Int T/H:</strong> Interno (DHT22)</li>
-                <li><strong>Ext T:</strong> Externo (DS18B20 Master)</li>
-                <li><strong>M-Core:</strong> CPU Master Temp</li>
-                <li><strong>S-Core:</strong> CPU Slave Temp</li>
-                <li><strong>Rack:</strong> Sensor Slave (Rack)</li>
-                <li><strong>Fan:</strong> PWM Ventoinha (%)</li>
-                <li><strong>M-CPU:</strong> Carga Master (%)</li>
-                <li><strong>S-CPU:</strong> Carga Slave (%)</li>
-                <li><strong>Net D:</strong> Download Master (KB/s)</li>
-            </ul>
-        </details>
+        <div class="chart-controls">
+            <span style="font-weight:bold; font-size:12px; align-self:center; margin-right:10px;">📊 GRÁFICOS:</span>
+            <button class="toggle-btn active" onclick="toggleChart('thermal', this)">🌡️ TÉRMICO</button>
+            <button class="toggle-btn active" onclick="toggleChart('system', this)">💻 SISTEMA</button>
+            <button class="toggle-btn active" onclick="toggleChart('network', this)">🌐 REDE</button>
+            <button class="toggle-btn active" onclick="toggleChart('env', this)">💧 AMBIENTE</button>
+        </div>
 
-        {% set cur_dir = 'ASC' if dir == 'DESC' else 'DESC' %}{% set base_url = '/history?start_date='~start_date~'&end_date='~end_date~'&start_time='~start_time~'&end_time='~end_time %}
+        <div class="charts-grid">
+            <div class="chart-box" id="thermal-container"><canvas id="thermalChart"></canvas></div>
+            <div class="chart-box" id="system-container"><canvas id="systemChart"></canvas></div>
+            <div class="chart-box" id="network-container"><canvas id="networkChart"></canvas></div>
+            <div class="chart-box" id="env-container"><canvas id="envChart"></canvas></div>
+        </div>
+
+        {% set cur_dir = 'ASC' if dir == 'DESC' else 'DESC' %}
+        {% set base_url = '/history?start_date='~start_date~'&end_date='~end_date~'&start_time='~start_time~'&end_time='~end_time %}
+        
         <table>
-            <thead><tr>
-                <th><a href="{{ base_url }}&sort=ts&dir={{ cur_dir }}">Hora {{ '▼' if dir=='DESC' and sort=='ts' else '▲' if sort=='ts' }}</a></th>
-                <th><a href="{{ base_url }}&sort=int_t&dir={{ cur_dir }}">Int T/H</a></th>
-                <th><a href="{{ base_url }}&sort=ext_t&dir={{ cur_dir }}">Ext T</a></th>
-                <th><a href="{{ base_url }}&sort=m_core_t&dir={{ cur_dir }}">M-Core</a></th>
-                <th><a href="{{ base_url }}&sort=s_core_t&dir={{ cur_dir }}">S-Core</a></th>
-                <th><a href="{{ base_url }}&sort=s_t&dir={{ cur_dir }}">Rack</a></th>
-                <th><a href="{{ base_url }}&sort=s_f&dir={{ cur_dir }}">Fan</a></th>
-                <th><a href="{{ base_url }}&sort=m_c&dir={{ cur_dir }}">M-CPU</a></th>
-                <th><a href="{{ base_url }}&sort=s_c&dir={{ cur_dir }}">S-CPU</a></th>
-                <th><a href="{{ base_url }}&sort=n_d&dir={{ cur_dir }}">Net D</a></th>
-            </tr></thead>
+            <thead>
+                <tr>
+                    <th><a href="{{ base_url }}&sort=ts&dir={{ cur_dir }}">HORA</a></th>
+                    <th><a href="{{ base_url }}&sort=int_t&dir={{ cur_dir }}">AMB. MASTER</a></th>
+                    <th><a href="{{ base_url }}&sort=m_core_t&dir={{ cur_dir }}">SOC MASTER</a></th>
+                    <th><a href="{{ base_url }}&sort=s_core_t&dir={{ cur_dir }}">SOC SLAVE</a></th>
+                    <th><a href="{{ base_url }}&sort=s_t&dir={{ cur_dir }}">AMB. SLAVE</a></th>
+                    <th><a href="{{ base_url }}&sort=s_f&dir={{ cur_dir }}">FAN %</a></th>
+                    <th><a href="{{ base_url }}&sort=m_c&dir={{ cur_dir }}">M-CPU %</a></th>
+                    <th><a href="{{ base_url }}&sort=s_c&dir={{ cur_dir }}">S-CPU %</a></th>
+                    <th><a href="{{ base_url }}&sort=n_d&dir={{ cur_dir }}">NET D (K)</a></th>
+                </tr>
+            </thead>
             <tbody>
-                {% for log in logs %}<tr>
+                {% for log in logs %}
+                <tr>
                     <td>{{ log.ts.split(' ')[1] }}</td>
-                    <td>{{ log.int_t or '--' }}° / {{ log.int_h or '--' }}%</td>
-                    <td>{{ log.ext_t or '--' }}°</td>
-                    <td>{{ "%.1f"|format(log.m_core_t) if log.m_core_t else '--' }}°</td>
-                    <td>{{ "%.1f"|format(log.s_core_t) if log.s_core_t else '--' }}°</td>
+                    <td>{{ log.int_t or '--' }}°C / {{ log.int_h or '--' }}%</td>
+                    <td>{{ log.m_core_t or '--' }}°</td>
+                    <td>{{ log.s_core_t or '--' }}°</td>
                     <td>{{ log.s_t or '--' }}°</td>
                     <td>{{ log.s_f or '0' }}%</td>
                     <td>{{ log.m_c or '0' }}%</td>
                     <td>{{ log.s_c or '0' }}%</td>
                     <td>{{ "%.1f"|format(log.n_d or 0) }} K</td>
-                </tr>{% endfor %}
+                </tr>
+                {% endfor %}
             </tbody>
         </table>
     </div>
 
     <script>
-        new Chart(document.getElementById('tempChart').getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: {{ c_labels|tojson }},
-                datasets: [
-                    { label: 'Amb. Interno (°C)', data: {{ c_int|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0, spanGaps: true },
-                    { label: 'Amb. Externo (°C)', data: {{ c_ext|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0, spanGaps: true },
-                    { label: 'Master Core (°C)', data: {{ c_m_core|tojson }}, borderColor: '#f1c40f', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
-                    { label: 'Slave Core (°C)', data: {{ c_s_core|tojson }}, borderColor: '#27ae60', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true }
-                ]
-            },
-            options: { 
-                responsive: true, maintainAspectRatio: false, 
-                scales: { y: { beginAtZero: false, ticks: { callback: (v) => v + '°' } } },
-                plugins: { legend: { position: 'top' } }
-            }
-        });
+        const labels = {{ c_labels|tojson }};
+        function createChart(id, datasets, yTitle) {
+            return new Chart(document.getElementById(id).getContext('2d'), {
+                type: 'line',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: { y: { beginAtZero: false, title: { display: true, text: yTitle, font: { size: 10 } } } },
+                    plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 9 } } } }
+                }
+            });
+        }
+
+        createChart('thermalChart', [
+            { label: 'Amb. Master', data: {{ c_int_t|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'SoC Master', data: {{ c_m_core|tojson }}, borderColor: '#f1c40f', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'SoC Slave', data: {{ c_s_core|tojson }}, borderColor: '#27ae60', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'Amb. Slave', data: {{ c_rack_t|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0, spanGaps: true }
+        ], 'Temperatura (°C)');
+
+        createChart('systemChart', [
+            { label: 'CPU Master %', data: {{ c_m_cpu|tojson }}, borderColor: '#8e44ad', tension: 0.3, pointRadius: 0 },
+            { label: 'RAM Master %', data: {{ c_m_ram|tojson }}, borderColor: '#9b59b6', borderDash: [2,2], tension: 0.3, pointRadius: 0 },
+            { label: 'CPU Slave %', data: {{ c_s_cpu|tojson }}, borderColor: '#d35400', tension: 0.3, pointRadius: 0 },
+            { label: 'RAM Slave %', data: {{ c_s_ram|tojson }}, borderColor: '#e67e22', borderDash: [2,2], tension: 0.3, pointRadius: 0 }
+        ], 'Carga (%)');
+
+        createChart('networkChart', [
+            { label: 'M-Down (KB/s)', data: {{ c_net_d|tojson }}, borderColor: '#2ecc71', fill: true, backgroundColor: 'rgba(46, 204, 113, 0.05)', tension: 0.3, pointRadius: 0 },
+            { label: 'S-Down (KB/s)', data: {{ c_s_net_d|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0 }
+        ], 'Download (KB/s)');
+
+        createChart('envChart', [
+            { label: 'Umidade Master %', data: {{ c_int_h|tojson }}, borderColor: '#1abc9c', tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'PWM Fan %', data: {{ c_fan|tojson }}, borderColor: '#34495e', borderDash: [4,4], tension: 0.3, pointRadius: 0, spanGaps: true }
+        ], 'Níveis %');
+
+        function toggleChart(type, btn) {
+            const container = document.getElementById(type + '-container');
+            container.classList.toggle('hidden');
+            btn.classList.toggle('active');
+        }
     </script>
 </body>
 </html>

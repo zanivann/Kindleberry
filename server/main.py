@@ -316,18 +316,27 @@ def history_page():
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_full, end_full)).fetchall()
-        chart_data = conn.execute("SELECT ts, int_t, ext_t, s_t, m_core_t, s_core_t FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_full, end_full)).fetchall()
-    
-    return render_template('history.html', logs=logs, start_date=start_d, end_date=end_d, 
-                           start_time=start_t, end_time=end_t, sort=sort_col, dir=sort_dir,
-                           c_labels=[r['ts'].split(' ')[1] for r in chart_data],
-                           c_int=[r['int_t'] for r in chart_data],
-                           c_ext=[r['ext_t'] for r in chart_data],
-                           c_rack=[r['s_t'] for r in chart_data],
-                           c_m_core=[r['m_core_t'] for r in chart_data],
-                           c_s_core=[r['s_core_t'] for r in chart_data])
-    
+        logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_f, end_f)).fetchall()
+        # A chave é esta query secundária sempre cronológica (ASC)
+        c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
+
+    return render_template('history.html', logs=logs, 
+                           # Envie cada métrica como uma lista individual
+                           c_labels=[r['ts'].split(' ')[1] for r in c_data],
+                           c_int_t=[r['int_t'] for r in c_data], 
+                           c_int_h=[r['int_h'] for r in c_data],
+                           c_ext_t=[r['ext_t'] for r in c_data], 
+                           c_rack_t=[r['s_t'] for r in c_data],
+                           c_m_core=[r['m_core_t'] for r in c_data], 
+                           c_s_core=[r['s_core_t'] for r in c_data],
+                           c_m_cpu=[r['m_c'] for r in c_data], 
+                           c_m_ram=[r['m_r'] for r in c_data],
+                           c_s_cpu=[r['s_c'] for r in c_data], 
+                           c_s_ram=[r['s_r'] for r in c_data],
+                           c_fan=[r['s_f'] for r in c_data],
+                           c_net_d=[r['n_d'] for r in c_data], 
+                           c_s_net_d=[r['sn_d'] for r in c_data],
+                           **request.args)
 @app.route('/api/stats')
 def api_stats():
     conf = load_config(); is_s_act = (time.time() - slave_data["last_seen"] < 60)
