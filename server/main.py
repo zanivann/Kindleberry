@@ -389,9 +389,7 @@ def serve_dashboard():
     try:
         kindle_bat = request.args.get('kbat'); conf = load_config(); load_translation_file()
         now = datetime.datetime.now()
-        # AS LINHAS ABAIXO DEVEM ESTAR ATIVAS:
-        v1, h1, st1 = get_display_val(conf['sensor_main'])
-        v2, h2, st2 = get_display_val(conf['sensor_ext'])
+        
         W, H = 1448, 1072; BG, FG = (0, 255) if conf.get('theme_mode') == 'dark' else (255, 0)
         img = Image.new('L', (W, H), BG); draw = ImageDraw.Draw(img)
 
@@ -400,9 +398,11 @@ def serve_dashboard():
         f_city = ImageFont.truetype(f_p, 90); f_med = ImageFont.truetype(f_p, 45); f_tiny = ImageFont.truetype(f_p, 24)
         f_label = ImageFont.truetype(f_p, 35); f_graph = ImageFont.truetype(f_p, 32)
 
+        # 1. PRIMEIRO: Buscar os dados externos que a função precisa
         t_api, cond_api, icon_url = get_weather_data(conf['lat'], conf['lon'])
         moon_icon, moon_key = get_moon_phase()
 
+        # 2. SEGUNDO: Definir a função
         def get_display_val(s):
             if s == "online": return t_api, None, cond_api
             if s == "dht": return latest_sensor_data["temp"], latest_sensor_data["hum"], "Interno"
@@ -410,8 +410,10 @@ def serve_dashboard():
             if s == "slave": return (f"{slave_data['temp']:.1f}" if time.time()-slave_data['last_seen']<60 else "--"), None, "Slave"
             return "--", None, "--"
 
-        #v1, h1, st1 = get_display_val(conf['sensor_main']); v2, h2, st2 = get_display_val(conf['sensor_ext'])
-        #now = datetime.datetime.now(); update_net_stats()
+        # 3. TERCEIRO: Chamar a função (Agora ela existe e tem os dados)
+        v1, h1, st1 = get_display_val(conf['sensor_main'])
+        v2, h2, st2 = get_display_val(conf['sensor_ext'])
+        
 
         def paste_icon(icon_file, pos, size, url=None):
             p = os.path.join(ICONS_DIR, f"{icon_file}.png")
