@@ -35,56 +35,43 @@ def get_master_cpu_temp():
 
 # --- BANCO DE DADOS (BLACKBOX V4.3) ---
 def init_db():
-    """Inicializa a estrutura do banco e aplica migrações para Core Temp."""
     try:
-        if not os.path.exists(DATA_DIR):
-            os.makedirs(DATA_DIR, exist_ok=True)
-        
+        if not os.path.exists(DATA_DIR): os.makedirs(DATA_DIR, exist_ok=True)
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS telemetry (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts DATETIME DEFAULT (datetime('now','localtime')),
                 int_t REAL, int_h REAL, ext_t REAL,
                 s_t REAL, s_f INTEGER, s_c REAL, s_r REAL,
-                m_c REAL, m_r REAL,
-                n_d REAL, n_u REAL
+                m_c REAL, m_r REAL, n_d REAL, n_u REAL
             )''')
-            # Migração automática para colunas de CPU
-            cols = [('m_core_t', 'REAL'), ('s_core_t', 'REAL')]
-            for col_name, col_type in cols:
-                try: conn.execute(f'ALTER TABLE telemetry ADD COLUMN {col_name} {col_type}')
-                except: pass 
+            # MIGRACAO: Adiciona as colunas que faltam para o Multgráfico
+            cols = [('m_core_t','REAL'), ('s_core_t','REAL'), ('sn_d','REAL'), ('sn_u','REAL')]
+            for c_n, c_t in cols:
+                try: conn.execute(f'ALTER TABLE telemetry ADD COLUMN {c_n} {c_t}')
+                except: pass
             conn.commit()
-    except Exception:
-        print("Erro ao inicializar DB"); traceback.print_exc()
+    except: pass
 
 def log_telemetry():
-    """Captura telemetria completa Master/Slave e persiste no SQLite."""
     try:
         def f(v):
             if v == "--" or v is None: return None
             try: return float(v)
             except: return None
-            
-        slave_online = (time.time() - slave_data["last_seen"] < 60)
-        m_c = psutil.cpu_percent()
-        m_r = psutil.virtual_memory().percent
-        m_core = get_master_cpu_temp()
-        n_d = net_history[-1][0] if net_history else 0
-        n_u = net_history[-1][1] if net_history else 0
-
+        s_online = (time.time() - slave_data["last_seen"] < 60)
+        n_d, n_u = (net_history[-1][0], net_history[-1][1]) if net_history else (0, 0)
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute('''INSERT INTO telemetry (
-                int_t, int_h, ext_t, s_t, s_f, s_c, s_r, m_c, m_r, n_d, n_u, m_core_t, s_core_t
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
+                int_t, int_h, ext_t, s_t, s_f, s_c, s_r, m_core_t, s_core_t, m_c, m_r, n_d, n_u, sn_d, sn_u
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
                 f(latest_sensor_data["temp"]), f(latest_sensor_data["hum"]), f(latest_sensor_data["ext_temp"]),
-                f(slave_data["temp"]) if slave_online else None,
-                f(slave_data["fan"]) if slave_online else None,
-                f(slave_data["cpu"]) if slave_online else None,
-                f(slave_data["ram"]) if slave_online else None,
-                m_c, m_r, n_d, n_u,
-                m_core,
-                f(slave_data["core_temp"]) if slave_online else None
+                f(slave_data["temp"]) if s_online else None, f(slave_data["fan"]) if s_online else None,
+                f(slave_data["cpu"]) if s_online else None, f(slave_data["ram"]) if s_online else None,
+                get_master_cpu_temp(), f(slave_data["core_temp"]) if s_online else None,
+                psutil.cpu_percent(), psutil.virtual_memory().percent, n_d, n_u,
+                f(slave_data.get("net_down", 0)) if s_online else 0,
+                f(slave_data.get("net_up", 0)) if s_online else 0
             ))
             conn.commit()
     except: pass
@@ -163,54 +150,50 @@ def update_sensor_background():
         c = load_config(); updated = False
         if time.time() - last_weather_check > 900:
             get_weather_data(c['lat'], c['lon']); last_weather_check = time.time()
-
+        
         if sensor_client:
             try:
                 h, t_val, _ = sensor_client.read_data()
                 if t_val is not None: latest_sensor_data["temp"], latest_sensor_data["hum"] = f"{t_val:.1f}", f"{h:.1f}"
-            except Exception: pass
+            except: pass
         if ds_sensor:
             try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
-            except Exception: pass
+            except: pass
 
-        # 1. LOGS RAM: Baseado nas Labels
+        # 1. LOGS RAM (Interno/Externo)
         v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
-        val_for_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
-        if update_thermal_log(c, "hist_int_min_log", val_for_int, True): updated = True
-        if update_thermal_log(c, "hist_int_max_log", val_for_int, False): updated = True
+        v_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
+        if update_thermal_log(c, "hist_int_min_log", v_int, True): updated = True
+        if update_thermal_log(c, "hist_int_max_log", v_int, False): updated = True
 
-        val_for_ext = v_main if c['label_main'] == "Ext" else (v_ext if c['label_ext'] == "Ext" else "--")
-        if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
-        if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
+        # 2. CONTROLE TÉRMICO & LOG RACK (V4.5.5)
+        if c.get("fan_node") == "main":
+            target_temp = latest_sensor_data["ext_temp"]
+            curr_fan_val = int(current_fan_speed * 100)
+        elif c.get("fan_node") == "slave":
+            target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
+            curr_fan_val = slave_data['fan']
+        else: target_temp, curr_fan_val = "--", 0
 
-        # 2. CONTROLE TÉRMICO E LOG DO RACK
-        target_temp = "--"
-        if c.get("fan_node") == "main": target_temp = latest_sensor_data["ext_temp"]
-        elif c.get("fan_node") == "slave": target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
+        if target_temp != "--":
+            update_thermal_log(c, "hist_rack_max_log", target_temp, False)
+            update_thermal_log(c, "hist_fan_max_log", curr_fan_val, False)
+            update_thermal_log(c, "hist_fan_min_log", curr_fan_val, True)
 
-        if target_temp != "--" and fan and c.get("fan_node") == "main":
-            try:
-                tv = float(target_temp)
-                tmin = float(c["fan_temp_min"])
-                tmax = float(c["fan_temp_max"])
-                limit_off = tmin - 10.0
-
-                if tv <= limit_off:
-                    speed = 0.0  # Abaixo de (mínimo - 10), desliga
-                elif tv <= tmin:
-                    speed = 0.2  # Entre (mínimo - 10) e mínimo, mantém 20%
-                else:
-                    # Rampa linear de 20% (0.2) até 100% (1.0)
-                    raw_speed = 0.2 + (0.8 * ((tv - tmin) / (tmax - tmin)))
-                    speed = min(1.0, max(0.2, raw_speed))
-                    
-                fan.value = speed
-                current_fan_speed = speed
-            except Exception: pass
-
+            # Controle físico se o Master for o eleito
+            if fan and c.get("fan_node") == "main":
+                try:
+                    tv, tmin, tmax = float(target_temp), float(c["fan_temp_min"]), float(c["fan_temp_max"])
+                    limit_off = tmin - 10.0
+                    if tv <= limit_off: speed = 0.0
+                    elif tv <= tmin: speed = 0.2
+                    else: speed = min(1.0, max(0.2, 0.2 + (0.8 * ((tv - tmin) / (tmax - tmin)))))
+                    fan.value = speed; current_fan_speed = speed
+                except: pass
+        
         if updated: save_config(c)
-        log_telemetry()
-        time.sleep(10)
+        log_telemetry(); time.sleep(10)
+
 
 app = Flask(__name__)
 ICONS_DIR = os.path.join(BASE_DIR, "icons")
@@ -274,24 +257,25 @@ def report():
     global slave_data
     if request.is_json:
         data = request.get_json()
-        f_s = data.get("fan", 0); t_s = data.get("temp", 0.0)
         slave_data.update({
-            "cpu": data.get("cpu", 0), 
-            "ram": data.get("ram", 0), 
-            "temp": t_s, 
-            "core_temp": data.get("core_temp", 0.0), # CORE TEMP RECEBIDA DO SLAVE
-            "fan": f_s, 
+            "cpu": data.get("cpu", 0), "ram": data.get("ram", 0), "temp": data.get("temp", 0.0), 
+            "core_temp": data.get("core_temp", 0.0), "fan": data.get("fan", 0), 
+            "net_down": data.get("net_down", 0.0), "net_up": data.get("net_up", 0.0),
             "last_seen": time.time()
         })
+        # Sincroniza o histórico de rede para o dashboard.png
         slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
         if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
         
-        c = load_config(); upd = False
-        if c.get("fan_node") == "slave":
-            if update_thermal_log(c, "hist_fan_min_log", f_s, True): upd = True
-            if update_thermal_log(c, "hist_fan_max_log", f_s, False): upd = True
-            if upd: save_config(c)
-    return jsonify({"status": "ok"})
+        # Envia as ordens do INDEX para o AGENTE
+        c = load_config()
+        return jsonify({
+            "status": "ok",
+            "fan_node": c.get("fan_node", "none"),
+            "fan_temp_min": float(c.get("fan_temp_min", 35.0)),
+            "fan_temp_max": float(c.get("fan_temp_max", 50.0))
+        })
+    return jsonify({"status": "error"}), 400
 
 @app.route('/check_status')
 def check_status(): return "RUN" if DASH_ACTIVE else "STOP"
@@ -347,9 +331,9 @@ def history_page():
             c_s_ram=[r['s_r'] if 's_r' in r.keys() else 0 for r in c_data],
             c_fan=[r['s_f'] if 's_f' in r.keys() else 0 for r in c_data],
             c_net_d=[r['n_d'] if 'n_d' in r.keys() else 0 for r in c_data],
-            c_net_u=[r['n_u'] if 'n_u' in r.keys() else 0 for r in c_data],
+            c_net_u=[r['n_u'] if 'n_u' in r.keys() else 0 for r in c_data], # Adicionado
             c_s_net_d=[r['sn_d'] if 'sn_d' in r.keys() else 0 for r in c_data],
-            c_s_net_u=[r['sn_u'] if 'sn_u' in r.keys() else 0 for r in c_data]
+            c_s_net_u=[r['sn_u'] if 'sn_u' in r.keys() else 0 for r in c_data] # Adicionado
         )
     except Exception as e:
         traceback.print_exc()
