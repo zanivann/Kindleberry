@@ -188,19 +188,26 @@ def update_sensor_background():
         if c.get("fan_node") == "main": target_temp = latest_sensor_data["ext_temp"]
         elif c.get("fan_node") == "slave": target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
 
-        if target_temp != "--":
-            if update_thermal_log(c, "hist_rack_min_log", target_temp, True): updated = True
-            if update_thermal_log(c, "hist_rack_max_log", target_temp, False): updated = True
+        if target_temp != "--" and fan and c.get("fan_node") == "main":
+            try:
+                tv = float(target_temp)
+                tmin = float(c["fan_temp_min"])
+                tmax = float(c["fan_temp_max"])
+                limit_off = tmin - 10.0
 
-            if fan and c.get("fan_node") == "main":
-                try:
-                    t_val = float(target_temp); t_min, t_max = float(c["fan_temp_min"]), float(c["fan_temp_max"])
-                    speed = max(0.2, min(1.0, 0.2 + (0.8 * ((t_val - t_min) / (t_max - t_min))))) if t_val > t_min else (0.0 if t_val <= t_min-10 else 0.2)
-                    fan.value = speed; current_fan_speed = speed
-                    if update_thermal_log(c, "hist_fan_min_log", speed*100, True): updated = True
-                    if update_thermal_log(c, "hist_fan_max_log", speed*100, False): updated = True
-                except: pass
-        
+                if tv <= limit_off:
+                    speed = 0.0  # Abaixo de (mínimo - 10), desliga
+                elif tv <= tmin:
+                    speed = 0.2  # Entre (mínimo - 10) e mínimo, mantém 20%
+                else:
+                    # Rampa linear de 20% (0.2) até 100% (1.0)
+                    raw_speed = 0.2 + (0.8 * ((tv - tmin) / (tmax - tmin)))
+                    speed = min(1.0, max(0.2, raw_speed))
+                    
+                fan.value = speed
+                current_fan_speed = speed
+            except Exception: pass
+
         if updated: save_config(c)
         log_telemetry()
         time.sleep(10)

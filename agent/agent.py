@@ -36,12 +36,22 @@ def get_rack_temp():
 def update_fan_speed(current_temp):
     global fan_temp_min, fan_temp_max
     if not fan: return
-    if current_temp is None: fan.value = 1.0; return
+    if current_temp is None: 
+        fan.value = 1.0; return # Segurança: falhou o sensor, gira tudo.
+    
     limit_off = fan_temp_min - 10.0
-    if current_temp >= fan_temp_max: fan.value = 1.0
-    elif current_temp <= limit_off: fan.value = 0.0
-    elif current_temp <= fan_temp_min: fan.value = 0.2
-    else: fan.value = 0.2 + (0.8 * ((current_temp - fan_temp_min) / (fan_temp_max - fan_temp_min)))
+    
+    if current_temp <= limit_off:
+        fan.value = 0.0  # Desliga
+    elif current_temp <= fan_temp_min:
+        fan.value = 0.2  # Velocidade mínima de cruzeiro (20%)
+    elif current_temp >= fan_temp_max:
+        fan.value = 1.0  # Potência máxima
+    else:
+        # Escalonamento: (Temp Atual - Mínimo) / (Máximo - Mínimo)
+        # Isso gera um fator de 0.0 a 1.0, aplicado sobre os 80% restantes da faixa
+        ramp = (current_temp - fan_temp_min) / (fan_temp_max - fan_temp_min)
+        fan.value = 0.2 + (0.8 * ramp)
 
 print("Agente V4.3.0 iniciado.")
 
