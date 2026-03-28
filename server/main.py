@@ -55,21 +55,35 @@ def init_db():
 
 def log_telemetry():
     try:
+        c = load_config()
         def f(v):
             if v == "--" or v is None: return None
             try: return float(v)
             except: return None
+            
         s_online = (time.time() - slave_data["last_seen"] < 60)
-        n_d, n_u = (net_history[-1][0], net_history[-1][1]) if net_history else (0, 0)
+        
+        # Pega os valores exatamente como o Kindle/Painel mostram
+        v_m_real, v_e_real = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
+        
+        # Sincroniza as labels com as colunas do banco
+        db_int = v_m_real if c['label_main'] == "Int" else (v_e_real if c['label_ext'] == "Int" else None)
+        db_ext = v_m_real if c['label_main'] == "Ext" else (v_e_real if c['label_ext'] == "Ext" else None)
+
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute('''INSERT INTO telemetry (
                 int_t, int_h, ext_t, s_t, s_f, s_c, s_r, m_core_t, s_core_t, m_c, m_r, n_d, n_u, sn_d, sn_u
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
-                f(latest_sensor_data["temp"]), f(latest_sensor_data["hum"]), f(latest_sensor_data["ext_temp"]),
-                f(slave_data["temp"]) if s_online else None, f(slave_data["fan"]) if s_online else None,
-                f(slave_data["cpu"]) if s_online else None, f(slave_data["ram"]) if s_online else None,
-                get_master_cpu_temp(), f(slave_data["core_temp"]) if s_online else None,
-                psutil.cpu_percent(), psutil.virtual_memory().percent, n_d, n_u,
+                f(db_int), f(latest_sensor_data["hum"]), f(db_ext),
+                f(slave_data["temp"]) if s_online else None,
+                f(slave_data["fan"]) if s_online else None,
+                f(slave_data["cpu"]) if s_online else None,
+                f(slave_data["ram"]) if s_online else None,
+                get_master_cpu_temp(),
+                f(slave_data["core_temp"]) if s_online else None,
+                psutil.cpu_percent(), psutil.virtual_memory().percent,
+                net_history[-1][0] if net_history else 0,
+                net_history[-1][1] if net_history else 0,
                 f(slave_data.get("net_down", 0)) if s_online else 0,
                 f(slave_data.get("net_up", 0)) if s_online else 0
             ))
@@ -175,6 +189,11 @@ def update_sensor_background():
             target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
             curr_fan_val = slave_data['fan']
         else: target_temp, curr_fan_val = "--", 0
+
+        # IDENTIFICA QUEM O SR. DEFINIU COMO "Ext" (Externo) - CORREÇÃO AQUI
+        val_for_ext = v_main if c['label_main'] == "Ext" else (v_ext if c['label_ext'] == "Ext" else "--")
+        if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
+        if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
 
         if target_temp != "--":
             update_thermal_log(c, "hist_rack_max_log", target_temp, False)
@@ -369,6 +388,10 @@ def api_stats():
 def serve_dashboard():
     try:
         kindle_bat = request.args.get('kbat'); conf = load_config(); load_translation_file()
+        now = datetime.datetime.now()
+        # AS LINHAS ABAIXO DEVEM ESTAR ATIVAS:
+        v1, h1, st1 = get_display_val(conf['sensor_main'])
+        v2, h2, st2 = get_display_val(conf['sensor_ext'])
         W, H = 1448, 1072; BG, FG = (0, 255) if conf.get('theme_mode') == 'dark' else (255, 0)
         img = Image.new('L', (W, H), BG); draw = ImageDraw.Draw(img)
 
