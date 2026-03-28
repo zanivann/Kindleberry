@@ -301,42 +301,52 @@ def reset_history():
 
 @app.route('/history')
 def history_page():
+    # 1. Captura de parâmetros da URL
     start_d = request.args.get('start_date', datetime.datetime.now().strftime('%Y-%m-%d'))
     end_d = request.args.get('end_date', datetime.datetime.now().strftime('%Y-%m-%d'))
-    start_t, end_t = request.args.get('start_time', '00:00'), request.args.get('end_time', '23:59')
-    sort_col, sort_dir = request.args.get('sort', 'ts'), request.args.get('dir', 'DESC').upper()
+    st_t = request.args.get('start_time', '00:00')
+    en_t = request.args.get('end_time', '23:59')
+    sort_col = request.args.get('sort', 'ts')
+    sort_dir = request.args.get('dir', 'DESC').upper()
     
-    # Whitelist atualizada com temperaturas de Core
-    allowed_cols = ['ts', 'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t', 's_f', 'm_c', 's_c', 'n_d']
-    if sort_col not in allowed_cols: sort_col = 'ts'
+    # 2. Whitelist de colunas para evitar SQL Injection
+    allowed = ['ts', 'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t', 's_f', 'm_c', 's_c', 'n_d']
+    if sort_col not in allowed: sort_col = 'ts'
     if sort_dir not in ['ASC', 'DESC']: sort_dir = 'DESC'
+    
+    # 3. DEFINIÇÃO DAS VARIÁVEIS FALTANTES (Onde ocorreu o erro 500)
+    start_f = f"{start_d} {st_t}:00"
+    end_f = f"{end_d} {en_t}:59"
 
-    start_full = f"{start_d} {start_t}:00"
-    end_full = f"{end_d} {end_t}:59"
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            # Dados para a Tabela (Ordenação do usuário)
+            logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_f, end_f)).fetchall()
+            # Dados para os Gráficos (Sempre cronológico)
+            c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
 
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_f, end_f)).fetchall()
-        # A chave é esta query secundária sempre cronológica (ASC)
-        c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
-
-    return render_template('history.html', logs=logs, 
-                           # Envie cada métrica como uma lista individual
-                           c_labels=[r['ts'].split(' ')[1] for r in c_data],
-                           c_int_t=[r['int_t'] for r in c_data], 
-                           c_int_h=[r['int_h'] for r in c_data],
-                           c_ext_t=[r['ext_t'] for r in c_data], 
-                           c_rack_t=[r['s_t'] for r in c_data],
-                           c_m_core=[r['m_core_t'] for r in c_data], 
-                           c_s_core=[r['s_core_t'] for r in c_data],
-                           c_m_cpu=[r['m_c'] for r in c_data], 
-                           c_m_ram=[r['m_r'] for r in c_data],
-                           c_s_cpu=[r['s_c'] for r in c_data], 
-                           c_s_ram=[r['s_r'] for r in c_data],
-                           c_fan=[r['s_f'] for r in c_data],
-                           c_net_d=[r['n_d'] for r in c_data], 
-                           c_s_net_d=[r['sn_d'] for r in c_data],
-                           **request.args)
+        # 4. Retorno para o template com todos os arrays de multgráfico
+        return render_template('history.html', 
+            logs=logs, start_date=start_d, end_date=end_d, start_time=st_t, end_time=en_t, sort=sort_col, dir=sort_dir,
+            c_labels=[r['ts'].split(' ')[1] for r in c_data],
+            c_int_t=[r['int_t'] for r in c_data],
+            c_int_h=[r['int_h'] for r in c_data],
+            c_ext_t=[r['ext_t'] for r in c_data],
+            c_rack_t=[r['s_t'] for r in c_data],
+            c_m_core=[r['m_core_t'] for r in c_data],
+            c_s_core=[r['s_core_t'] for r in c_data],
+            c_m_cpu=[r['m_c'] for r in c_data],
+            c_m_ram=[r['m_r'] for r in c_data],
+            c_s_cpu=[r['s_c'] for r in c_data],
+            c_s_ram=[r['s_r'] for r in c_data],
+            c_fan=[r['s_f'] for r in c_data],
+            c_net_d=[r['n_d'] for r in c_data],
+            c_s_net_d=[r['sn_d'] for r in c_data]
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return f"Erro na telemetria: {e}", 500
 @app.route('/api/stats')
 def api_stats():
     conf = load_config(); is_s_act = (time.time() - slave_data["last_seen"] < 60)
