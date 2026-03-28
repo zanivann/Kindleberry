@@ -309,26 +309,24 @@ def history_page():
     sort_col = request.args.get('sort', 'ts')
     sort_dir = request.args.get('dir', 'DESC').upper()
     
-    # 2. Whitelist de colunas para evitar SQL Injection
+    # 2. Whitelist de colunas para ordenação
     allowed = ['ts', 'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t', 's_f', 'm_c', 's_c', 'n_d']
     if sort_col not in allowed: sort_col = 'ts'
     if sort_dir not in ['ASC', 'DESC']: sort_dir = 'DESC'
     
-    # 3. DEFINIÇÃO DAS VARIÁVEIS FALTANTES (Onde ocorreu o erro 500)
+    # 3. Definição do período de busca
     start_f = f"{start_d} {st_t}:00"
     end_f = f"{end_d} {en_t}:59"
 
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
-            # Dados para a Tabela (Ordenação do usuário)
             logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_f, end_f)).fetchall()
-            # Dados para os Gráficos (Sempre cronológico)
             c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
 
-        # 4. Retorno para o template com todos os arrays de multgráfico
-        return render_template('history.html', logs=logs, 
-            start_date=start_d, end_date=end_d, start_time=st_t, end_time=en_t, sort=sort_col, dir=sort_dir,
+        # 4. Retorno com mapeamento defensivo (evita KeyError se a coluna não existir no DB)
+        return render_template('history.html', 
+            logs=logs, start_date=start_d, end_date=end_d, start_time=st_t, end_time=en_t, sort=sort_col, dir=sort_dir,
             c_labels=[r['ts'].split(' ')[1] for r in c_data],
             c_int_t=[r['int_t'] if 'int_t' in r.keys() else 0 for r in c_data],
             c_int_h=[r['int_h'] if 'int_h' in r.keys() else 0 for r in c_data],
@@ -342,7 +340,9 @@ def history_page():
             c_s_ram=[r['s_r'] if 's_r' in r.keys() else 0 for r in c_data],
             c_fan=[r['s_f'] if 's_f' in r.keys() else 0 for r in c_data],
             c_net_d=[r['n_d'] if 'n_d' in r.keys() else 0 for r in c_data],
-            c_s_net_d=[r['sn_d'] if 'sn_d' in r.keys() else 0 for r in c_data]
+            c_net_u=[r['n_u'] if 'n_u' in r.keys() else 0 for r in c_data],
+            c_s_net_d=[r['sn_d'] if 'sn_d' in r.keys() else 0 for r in c_data],
+            c_s_net_u=[r['sn_u'] if 'sn_u' in r.keys() else 0 for r in c_data]
         )
     except Exception as e:
         traceback.print_exc()

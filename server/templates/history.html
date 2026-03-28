@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>📜 Auditoria Master V4.5</title>
+    <title>📜 Auditoria Master V4.5.3</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -57,7 +57,7 @@
             <button class="toggle-btn active" onclick="toggleChart('thermal', this)">🌡️ TÉRMICO</button>
             <button class="toggle-btn active" onclick="toggleChart('system', this)">💻 SISTEMA</button>
             <button class="toggle-btn active" onclick="toggleChart('network', this)">🌐 REDE</button>
-            <button class="toggle-btn active" onclick="toggleChart('env', this)">💧 AMBIENTE</button>
+            <button class="toggle-btn active" onclick="toggleChart('env', this)">🌬️ ATUADORES</button>
         </div>
 
         <div class="charts-grid">
@@ -74,13 +74,13 @@
             <thead>
                 <tr>
                     <th><a href="{{ base_url }}&sort=ts&dir={{ cur_dir }}">HORA</a></th>
-                    <th><a href="{{ base_url }}&sort=int_t&dir={{ cur_dir }}">AMB. MASTER</a></th>
-                    <th><a href="{{ base_url }}&sort=m_core_t&dir={{ cur_dir }}">SOC MASTER</a></th>
-                    <th><a href="{{ base_url }}&sort=s_core_t&dir={{ cur_dir }}">SOC SLAVE</a></th>
-                    <th><a href="{{ base_url }}&sort=s_t&dir={{ cur_dir }}">AMB. SLAVE</a></th>
+                    <th><a href="{{ base_url }}&sort=int_t&dir={{ cur_dir }}">TEMP. INTERNO</a></th>
+                    <th><a href="{{ base_url }}&sort=ext_t&dir={{ cur_dir }}">SENS. EXTERNO</a></th>
+                    <th><a href="{{ base_url }}&sort=m_core_t&dir={{ cur_dir }}">CPU MASTER</a></th>
+                    <th><a href="{{ base_url }}&sort=s_core_t&dir={{ cur_dir }}">CPU SLAVE</a></th>
+                    <th><a href="{{ base_url }}&sort=s_t&dir={{ cur_dir }}">TEMP. RACK</a></th>
                     <th><a href="{{ base_url }}&sort=s_f&dir={{ cur_dir }}">FAN %</a></th>
                     <th><a href="{{ base_url }}&sort=m_c&dir={{ cur_dir }}">M-CPU %</a></th>
-                    <th><a href="{{ base_url }}&sort=s_c&dir={{ cur_dir }}">S-CPU %</a></th>
                     <th><a href="{{ base_url }}&sort=n_d&dir={{ cur_dir }}">NET D (K)</a></th>
                 </tr>
             </thead>
@@ -88,13 +88,13 @@
                 {% for log in logs %}
                 <tr>
                     <td>{{ log.ts.split(' ')[1] }}</td>
-                    <td>{{ log.int_t or '--' }}°C / {{ log.int_h or '--' }}%</td>
+                    <td>{{ log.int_t or '--' }}° / {{ log.int_h or '--' }}%</td>
+                    <td>{{ log.ext_t or '--' }}°</td>
                     <td>{{ log.m_core_t or '--' }}°</td>
                     <td>{{ log.s_core_t or '--' }}°</td>
                     <td>{{ log.s_t or '--' }}°</td>
                     <td>{{ log.s_f or '0' }}%</td>
                     <td>{{ log.m_c or '0' }}%</td>
-                    <td>{{ log.s_c or '0' }}%</td>
                     <td>{{ "%.1f"|format(log.n_d or 0) }} K</td>
                 </tr>
                 {% endfor %}
@@ -117,28 +117,33 @@
             });
         }
 
+        // 1. Gráfico Térmico (Identidade Corrigida)
         createChart('thermalChart', [
-            { label: 'Amb. Master', data: {{ c_int_t|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0, spanGaps: true },
-            { label: 'SoC Master', data: {{ c_m_core|tojson }}, borderColor: '#f1c40f', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
-            { label: 'SoC Slave', data: {{ c_s_core|tojson }}, borderColor: '#27ae60', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
-            { label: 'Amb. Slave', data: {{ c_rack_t|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0, spanGaps: true }
+            { label: 'Temp. Interno', data: {{ c_int_t|tojson }}, borderColor: '#e74c3c', tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'Sens. Externo', data: {{ c_ext_t|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'CPU Master', data: {{ c_m_core|tojson }}, borderColor: '#f1c40f', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'CPU Slave', data: {{ c_s_core|tojson }}, borderColor: '#27ae60', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'Temp. RACK', data: {{ c_rack_t|tojson }}, borderColor: '#9b59b6', tension: 0.3, pointRadius: 0, spanGaps: true }
         ], 'Temperatura (°C)');
 
+        // 2. Gráfico de Sistema
         createChart('systemChart', [
-            { label: 'CPU Master %', data: {{ c_m_cpu|tojson }}, borderColor: '#8e44ad', tension: 0.3, pointRadius: 0 },
-            { label: 'RAM Master %', data: {{ c_m_ram|tojson }}, borderColor: '#9b59b6', borderDash: [2,2], tension: 0.3, pointRadius: 0 },
-            { label: 'CPU Slave %', data: {{ c_s_cpu|tojson }}, borderColor: '#d35400', tension: 0.3, pointRadius: 0 },
-            { label: 'RAM Slave %', data: {{ c_s_ram|tojson }}, borderColor: '#e67e22', borderDash: [2,2], tension: 0.3, pointRadius: 0 }
+            { label: 'M-CPU %', data: {{ c_m_cpu|tojson }}, borderColor: '#8e44ad', tension: 0.3, pointRadius: 0 },
+            { label: 'M-RAM %', data: {{ c_m_ram|tojson }}, borderColor: '#9b59b6', borderDash: [2,2], tension: 0.3, pointRadius: 0 },
+            { label: 'S-CPU %', data: {{ c_s_cpu|tojson }}, borderColor: '#d35400', tension: 0.3, pointRadius: 0 },
+            { label: 'S-RAM %', data: {{ c_s_ram|tojson }}, borderColor: '#e67e22', borderDash: [2,2], tension: 0.3, pointRadius: 0 }
         ], 'Carga (%)');
 
+        // 3. Gráfico de Rede
         createChart('networkChart', [
-            { label: 'M-Down (KB/s)', data: {{ c_net_d|tojson }}, borderColor: '#2ecc71', fill: true, backgroundColor: 'rgba(46, 204, 113, 0.05)', tension: 0.3, pointRadius: 0 },
-            { label: 'S-Down (KB/s)', data: {{ c_s_net_d|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0 }
+            { label: 'M-Down (K)', data: {{ c_net_d|tojson }}, borderColor: '#2ecc71', fill: true, backgroundColor: 'rgba(46, 204, 113, 0.05)', tension: 0.3, pointRadius: 0 },
+            { label: 'S-Down (K)', data: {{ c_s_net_d|tojson }}, borderColor: '#3498db', tension: 0.3, pointRadius: 0 }
         ], 'Download (KB/s)');
 
+        // 4. Atuadores e Umidade
         createChart('envChart', [
-            { label: 'Umidade Master %', data: {{ c_int_h|tojson }}, borderColor: '#1abc9c', tension: 0.3, pointRadius: 0, spanGaps: true },
-            { label: 'PWM Fan %', data: {{ c_fan|tojson }}, borderColor: '#34495e', borderDash: [4,4], tension: 0.3, pointRadius: 0, spanGaps: true }
+            { label: 'Umidade %', data: {{ c_int_h|tojson }}, borderColor: '#1abc9c', tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: 'Ventoinha %', data: {{ c_fan|tojson }}, borderColor: '#34495e', borderDash: [4,4], tension: 0.3, pointRadius: 0, spanGaps: true }
         ], 'Níveis %');
 
         function toggleChart(type, btn) {
