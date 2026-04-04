@@ -1,48 +1,15 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="{{ config.get('language', 'pt_BR')[:2] }}">
 <head>
     <meta charset="UTF-8">
-    <title>BlackBox Core | V5.0</title>
+    <title>{{ tr.get('ui_app_title', 'BLACKBOX // CORE') }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        :root { 
-            --bg-color: #f4f5f7; 
-            --card-bg: #ffffff; 
-            --primary: #1e293b; 
-            --accent: #2563eb; 
-            --accent-hover: #1d4ed8;
-            --text: #334155; 
-            --border: #e2e8f0;
-            --danger: #ef4444;
-            --success: #10b981;
-        }
-        
-        body { 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            background-color: var(--bg-color); 
-            color: var(--text); 
-            margin: 0; 
-            padding: 0; 
-            line-height: 1.5;
-        }
-
-        .header-bar {
-            background: var(--primary);
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
+        :root { --bg-color: #f4f5f7; --card-bg: #ffffff; --primary: #1e293b; --accent: #2563eb; --accent-hover: #1d4ed8; --text: #334155; --border: #e2e8f0; --danger: #ef4444; --success: #10b981; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-color); color: var(--text); margin: 0; padding: 0; line-height: 1.5; }
+        .header-bar { background: var(--primary); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .header-title { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.5px; }
-        .btn-db { text-decoration: none; background: rgba(255,255,255,0.1); color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.85em; font-weight: 500; transition: 0.2s; border: 1px solid rgba(255,255,255,0.2); }
-        .btn-db:hover { background: rgba(255,255,255,0.2); }
-
         .container { max-width: 600px; margin: 30px auto; padding: 0 15px; }
-        
-        /* Abas */
         .tabs-nav { display: flex; gap: 5px; margin-bottom: 20px; background: var(--card-bg); padding: 5px; border-radius: 8px; border: 1px solid var(--border); }
         .tab-btn { flex: 1; padding: 10px; font-size: 0.9rem; font-weight: 500; border: none; border-radius: 6px; cursor: pointer; background: transparent; color: #64748b; transition: 0.2s; }
         .tab-btn:hover { background: #f8fafc; color: var(--primary); }
@@ -50,34 +17,24 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeIn 0.2s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Cartões e Formulários */
         .card { background: var(--card-bg); padding: 25px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        
         .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
         .status-header h3 { margin: 0; font-size: 1rem; color: var(--primary); }
         .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; }
         .badge-run { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
         .badge-stop { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-        
         .btn-toggle { padding: 10px; font-size: 0.9rem; border: none; border-radius: 6px; cursor: pointer; color: white; width: 100%; font-weight: 500; transition: 0.2s; }
         .btn-toggle:hover { filter: brightness(1.1); }
-        
         .section-title { font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 25px 0 15px 0; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
-        
         label { display: block; margin: 15px 0 5px 0; font-weight: 500; font-size: 0.85rem; color: #475569; }
         input[type="text"], input[type="number"], select { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 0.9rem; background-color: #f8fafc; color: var(--primary); transition: 0.2s; outline: none; }
         input:focus, select:focus { border-color: var(--accent); background-color: #fff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-        
         .row-group { display: flex; gap: 12px; }
         .row-group > * { flex: 1; }
         .search-group { display: flex; gap: 10px; align-items: flex-end; }
         .btn-search { height: 40px; padding: 0 15px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500; }
-        
         .btn-save { background: var(--accent); color: #fff; padding: 12px; width: 100%; border: none; cursor: pointer; border-radius: 6px; font-size: 0.95rem; font-weight: 600; margin-top: 30px; transition: 0.2s; }
         .btn-save:hover { background: var(--accent-hover); }
-
-        /* Tabela de Recordes */
         .records-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
         .record-box { background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid var(--border); }
         .record-box h4 { margin: 0 0 10px 0; font-size: 0.8rem; color: var(--primary); text-transform: uppercase; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
@@ -91,75 +48,83 @@
 </head>
 <body>
     <div class="header-bar">
-        <div class="header-title">BLACKBOX // CORE</div>
-        <a href="/history" class="btn-db">Telemetry DB</a>
+        <div class="header-title">{{ tr.get('ui_app_title', 'BLACKBOX // CORE') }}</div>
     </div>
 
     <div class="container">
         <div class="tabs-nav">
-            <button class="tab-btn active" onclick="switchTab('tab-general', this)">Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('tab-hardware', this)">Hardware</button>
-            <button class="tab-btn" onclick="switchTab('tab-records', this)">System Records</button>
+            <button class="tab-btn active" onclick="switchTab('tab-general', this)">{{ tr.get('ui_tab_dash', 'Dashboard') }}</button>
+            <button class="tab-btn" onclick="switchTab('tab-hardware', this)">{{ tr.get('ui_tab_hw', 'Hardware') }}</button>
+            <button class="tab-btn" onclick="switchTab('tab-records', this)">{{ tr.get('ui_tab_rec', 'Records') }}</button>
         </div>
 
         <div id="tab-general" class="tab-content active">
+            
+            <div class="card" style="background: var(--primary); border: none;">
+                <h3 style="margin-top: 0; color: white; font-size: 1.1rem;">📊 {{ tr.get('ui_charts_title', 'Telemetry Analytics') }}</h3>
+                <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 15px;">{{ tr.get('ui_charts_desc', 'Access the database for charts.') }}</p>
+                <button type="button" class="btn-save" style="margin-top: 0; background: var(--accent);" onclick="window.location.href='/history'">
+                    {{ tr.get('ui_btn_history', 'OPEN CHARTS (SQLITE)') }}
+                </button>
+            </div>
+
             <div class="card">
                 <div class="status-header">
-                    <h3>Engine Status</h3>
+                    <h3>{{ tr.get('ui_engine_status', 'Engine Status') }}</h3>
                     <span class="badge {{ 'badge-run' if dash_active else 'badge-stop' }}">
-                        {{ 'ACTIVE' if dash_active else 'HALTED' }}
+                        {{ tr.get('ui_status_active', 'ACTIVE') if dash_active else tr.get('ui_status_halted', 'HALTED') }}
                     </span>
                 </div>
                 <form action="/toggle_status" method="POST">
                     <button type="submit" class="btn-toggle" style="background-color: {{ 'var(--danger)' if dash_active else 'var(--success)' }};">
-                        {{ 'HALT ENGINE' if dash_active else 'START ENGINE' }}
+                        {{ tr.get('ui_btn_stop', 'HALT ENGINE') if dash_active else tr.get('ui_btn_start', 'START ENGINE') }}
                     </button>
                 </form>
             </div>
 
             <form action="/update" method="POST">
                 <div class="card">
-                    <div class="section-title">Display Parameters</div>
+                    <div class="section-title">{{ tr.get('ui_disp_params', 'Display Parameters') }}</div>
                     
-                    <label>Language Override</label>
+                    <label>{{ tr.get('ui_lang_override', 'System Language') }}</label>
                     <select name="language">
-                        <option value="pt_BR" {% if config.language == 'pt_BR' %}selected{% endif %}>PT-BR (System Default)</option>
-                        <option value="en_US" {% if config.language == 'en_US' %}selected{% endif %}>EN-US</option>
+                        <option value="pt_BR" {% if config.language == 'pt_BR' %}selected{% endif %}>PT-BR (Português)</option>
+                        <option value="en_US" {% if config.language == 'en_US' %}selected{% endif %}>EN-US (English)</option>
                     </select>
 
                     <div class="row-group">
                         <div>
-                            <label>UI Theme</label>
+                            <label>{{ tr.get('ui_theme', 'UI Theme') }}</label>
                             <select name="theme_mode">
-                                <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>Auto-Detect</option>
-                                <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>Light Mode</option>
-                                <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>Dark Mode</option>
+                                <option value="auto" {% if config.theme_mode == 'auto' %}selected{% endif %}>{{ tr.get('ui_opt_auto', 'Auto') }}</option>
+                                <option value="light" {% if config.theme_mode == 'light' %}selected{% endif %}>{{ tr.get('ui_opt_light', 'Light') }}</option>
+                                <option value="dark" {% if config.theme_mode == 'dark' %}selected{% endif %}>{{ tr.get('ui_opt_dark', 'Dark') }}</option>
                             </select>
                         </div>
                         <div>
-                            <label>Font Scale (px)</label>
+                            <label>{{ tr.get('ui_font_scale', 'Font Scale (px)') }}</label>
                             <input type="number" name="font_size" value="{{ config.font_size }}">
                         </div>
                     </div>
 
-                    <label>Panel Rotation</label>
+                    <label>{{ tr.get('ui_rotation', 'Panel Rotation') }}</label>
                     <select name="rotation">
-                        <option value="0" {% if config.rotation == 0 %}selected{% endif %}>Portrait (0°)</option>
-                        <option value="1" {% if config.rotation == 1 %}selected{% endif %}>Landscape (90°)</option>
-                        <option value="2" {% if config.rotation == 2 %}selected{% endif %}>Inverted (180°)</option>
-                        <option value="3" {% if config.rotation == 3 %}selected{% endif %}>Landscape Rev (270°)</option>
+                        <option value="0" {% if config.rotation == 0 %}selected{% endif %}>{{ tr.get('ui_opt_portrait', 'Portrait') }} (0°)</option>
+                        <option value="1" {% if config.rotation == 1 %}selected{% endif %}>{{ tr.get('ui_opt_landscape', 'Landscape') }} (90°)</option>
+                        <option value="2" {% if config.rotation == 2 %}selected{% endif %}>{{ tr.get('ui_opt_inv', 'Inverted') }} (180°)</option>
+                        <option value="3" {% if config.rotation == 3 %}selected{% endif %}>{{ tr.get('ui_opt_land_rev', 'Landscape Rev') }} (270°)</option>
                     </select>
 
-                    <label>Backlight Level: <output id="br_val">{{ config.brightness }}</output></label>
+                    <label>{{ tr.get('ui_backlight', 'Backlight Level') }}: <output id="br_val">{{ config.brightness }}</output></label>
                     <input type="range" name="brightness" min="0" max="24" value="{{ config.brightness }}" oninput="document.getElementById('br_val').innerText = this.value" style="width:100%;">
 
-                    <div class="section-title">Geolocation Data</div>
+                    <div class="section-title">{{ tr.get('ui_geo_data', 'Geolocation Data') }}</div>
                     <div class="search-group">
                         <div style="flex: 1;">
-                            <label style="margin-top:0;">Location String</label>
+                            <label style="margin-top:0;">{{ tr.get('ui_loc_string', 'Location String') }}</label>
                             <input type="text" id="city_input" name="city_name" value="{{ config.city_name }}">
                         </div>
-                        <button type="button" class="btn-search" onclick="lookupCoords()">Resolve</button>
+                        <button type="button" class="btn-search" onclick="lookupCoords()">{{ tr.get('ui_btn_resolve', 'Resolve') }}</button>
                     </div>
 
                     <div class="row-group">
@@ -170,7 +135,7 @@
                     <label>Timezone Vector</label>
                     <input type="text" name="timezone" value="{{ config.timezone }}">
                     
-                    <button type="submit" class="btn-save">COMMIT CHANGES</button>
+                    <button type="submit" class="btn-save">{{ tr.get('ui_btn_save', 'COMMIT CHANGES') }}</button>
                 </div>
             </form>
         </div>
@@ -178,78 +143,75 @@
         <div id="tab-hardware" class="tab-content">
             <form action="/update" method="POST">
                 <div class="card">
-                    <div class="section-title">Telemetry Routing</div>
+                    <div class="section-title">{{ tr.get('ui_telemetry_routing', 'Telemetry Routing') }}</div>
                     
-                    <label>Primary Interface (Node 1)</label>
+                    <label>{{ tr.get('ui_node_1', 'Primary Interface (Node 1)') }}</label>
                     <div class="row-group">
                         <select name="sensor_main">
-                            <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>API (Weather)</option>
+                            <option value="online" {% if config.sensor_main == 'online' %}selected{% endif %}>{{ tr.get('ui_opt_online', 'API') }}</option>
                             <option value="dht" {% if config.sensor_main == 'dht' %}selected{% endif %}>Local: DHT22</option>
                             <option value="ds18" {% if config.sensor_main == 'ds18' %}selected{% endif %}>Local: DS18B20</option>
-                            <option value="slave" {% if config.sensor_main == 'slave' %}selected{% endif %}>Remote: Slave Node</option>
+                            <option value="slave" {% if config.sensor_main == 'slave' %}selected{% endif %}>Slave Node</option>
                         </select>
                         <select name="label_main">
-                            <option value="Int" {% if config.label_main == 'Int' %}selected{% endif %}>Internal</option>
-                            <option value="Ext" {% if config.label_main == 'Ext' %}selected{% endif %}>External</option>
+                            <option value="Int" {% if config.label_main == 'Int' %}selected{% endif %}>Int</option>
+                            <option value="Ext" {% if config.label_main == 'Ext' %}selected{% endif %}>Ext</option>
                         </select>
                     </div>
 
-                    <label>Secondary Interface (Node 2)</label>
+                    <label>{{ tr.get('ui_node_2', 'Secondary Interface (Node 2)') }}</label>
                     <div class="row-group">
                         <select name="sensor_ext">
-                            <option value="none" {% if config.sensor_ext == 'none' %}selected{% endif %}>Disabled</option>
-                            <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>API (Weather)</option>
+                            <option value="none" {% if config.sensor_ext == 'none' %}selected{% endif %}>{{ tr.get('ui_opt_none', 'None') }}</option>
+                            <option value="online" {% if config.sensor_ext == 'online' %}selected{% endif %}>{{ tr.get('ui_opt_online', 'API') }}</option>
                             <option value="dht" {% if config.sensor_ext == 'dht' %}selected{% endif %}>Local: DHT22</option>
                             <option value="ds18" {% if config.sensor_ext == 'ds18' %}selected{% endif %}>Local: DS18B20</option>
-                            <option value="slave" {% if config.sensor_ext == 'slave' %}selected{% endif %}>Remote: Slave Node</option>
+                            <option value="slave" {% if config.sensor_ext == 'slave' %}selected{% endif %}>Slave Node</option>
                         </select>
                         <select name="label_ext">
-                            <option value="Int" {% if config.label_ext == 'Int' %}selected{% endif %}>Internal</option>
-                            <option value="Ext" {% if config.label_ext == 'Ext' %}selected{% endif %}>External</option>
+                            <option value="Int" {% if config.label_ext == 'Int' %}selected{% endif %}>Int</option>
+                            <option value="Ext" {% if config.label_ext == 'Ext' %}selected{% endif %}>Ext</option>
                         </select>
                     </div>
 
-                    <div class="section-title">Thermal Protocol (Actuators)</div>
-                    <label>Execution Node</label>
+                    <div class="section-title">{{ tr.get('ui_thermal_protocol', 'Thermal Protocol') }}</div>
+                    <label>{{ tr.get('ui_exec_node', 'Execution Node') }}</label>
                     <select name="fan_node">
-                        <option value="none" {% if config.fan_node == 'none' %}selected{% endif %}>Disabled</option>
-                        <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>Master Controller</option>
-                        <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>Slave Controller</option>
+                        <option value="none" {% if config.fan_node == 'none' %}selected{% endif %}>{{ tr.get('ui_opt_none', 'None') }}</option>
+                        <option value="main" {% if config.fan_node == 'main' %}selected{% endif %}>{{ tr.get('ui_opt_main', 'Main Controller') }}</option>
+                        <option value="slave" {% if config.fan_node == 'slave' %}selected{% endif %}>{{ tr.get('ui_opt_slave', 'Slave Controller') }}</option>
                     </select>
                     <div class="row-group">
                         <div><label>T-Min (°C)</label><input type="number" step="0.1" name="fan_temp_min" value="{{ config.fan_temp_min }}"></div>
                         <div><label>T-Max (°C)</label><input type="number" step="0.1" name="fan_temp_max" value="{{ config.fan_temp_max }}"></div>
                     </div>
-                    <p style="font-size: 0.75rem; color: #64748b; margin-top: 10px;">* Ramp scales linearly. Dead-zone enforces 0% below (T-Min - 10).</p>
 
-                    <button type="submit" class="btn-save">COMMIT CHANGES</button>
+                    <button type="submit" class="btn-save">{{ tr.get('ui_btn_save', 'COMMIT CHANGES') }}</button>
                 </div>
             </form>
         </div>
 
         <div id="tab-records" class="tab-content">
             <div class="card">
-                <div class="section-title" style="margin-top:0;">Volatile Memory Records</div>
-                
                 <div class="records-grid">
                     <div class="record-box">
-                        <h4>Internal Env</h4>
-                        <div class="log-category">Peak Values</div>
+                        <h4>Int</h4>
+                        <div class="log-category">Max</div>
                         {% for log in config.hist_int_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°C</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
-                        <div class="log-category">Lowest Values</div>
+                        <div class="log-category">Min</div>
                         {% for log in config.hist_int_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°C</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
                     </div>
                     
                     <div class="record-box">
-                        <h4>External Env</h4>
-                        <div class="log-category">Peak Values</div>
+                        <h4>Ext</h4>
+                        <div class="log-category">Max</div>
                         {% for log in config.hist_ext_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°C</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
-                        <div class="log-category">Lowest Values</div>
+                        <div class="log-category">Min</div>
                         {% for log in config.hist_ext_min_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°C</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
                     </div>
 
                     <div class="record-box">
-                        <h4>Rack Thermals</h4>
+                        <h4>Rack / Fan</h4>
                         <div class="log-category">T-Max (Sensor)</div>
                         {% for log in config.hist_rack_max_log %}<div class="log-entry"><span class="log-val">{{ log.val }}°C</span><span class="log-dt">{{ log.dt }}</span></div>{% endfor %}
                         <div class="log-category">V-Max (Actuator)</div>
@@ -260,7 +222,7 @@
                 </div>
 
                 <form id="resetForm" action="/reset_history" method="POST">
-                    <button type="submit" class="btn-danger">PURGE VOLATILE RECORDS</button>
+                    <button type="submit" class="btn-danger">{{ tr.get('ui_purge_records', 'PURGE VOLATILE RECORDS') }}</button>
                 </form>
             </div>
         </div>
@@ -280,18 +242,18 @@
             if (!city) return;
             const btn = document.querySelector('.btn-search');
             const originalText = btn.innerText;
-            btn.innerText = "Wait...";
+            btn.innerText = "...";
             try {
                 const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`);
                 const data = await response.json();
                 if (data.length > 0) {
                     document.getElementById('lat_field').value = parseFloat(data[0].lat).toFixed(4);
                     document.getElementById('lon_field').value = parseFloat(data[0].lon).toFixed(4);
-                    btn.innerText = "Done";
+                    btn.innerText = "OK";
                 } else {
-                    btn.innerText = "Failed";
+                    btn.innerText = "Err";
                 }
-            } catch (e) { btn.innerText = "Error"; }
+            } catch (e) { btn.innerText = "Err"; }
             setTimeout(() => btn.innerText = originalText, 2000);
         }
     </script>
