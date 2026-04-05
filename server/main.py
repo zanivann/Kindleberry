@@ -167,28 +167,47 @@ def update_sensor_background():
     global latest_sensor_data, current_fan_speed
     init_db()
     last_weather_check = 0
+    
+    # FILTRO CIRÚRGICO DE HARDWARE
+    def is_valid_temp(new_t, old_t_str):
+        if new_t is None or not (-20 <= new_t <= 120): return False
+        if old_t_str != "--":
+            try:
+                if abs(new_t - float(old_t_str)) > 10.0: return False
+            except: pass
+        return True
+
     while True:
         update_net_stats()
         c = load_config(); updated = False
         if time.time() - last_weather_check > 900:
             get_weather_data(c['lat'], c['lon']); last_weather_check = time.time()
         
+        # 1. LEITURA BLINDADA: DHT22 (Interno)
         if sensor_client:
             try:
                 h, t_val, _ = sensor_client.read_data()
-                if t_val is not None: latest_sensor_data["temp"], latest_sensor_data["hum"] = f"{t_val:.1f}", f"{h:.1f}"
+                if is_valid_temp(t_val, latest_sensor_data["temp"]):
+                    latest_sensor_data["temp"] = f"{t_val:.1f}"
+                if h is not None and 0 <= h <= 100:
+                    latest_sensor_data["hum"] = f"{h:.1f}"
             except: pass
+            
+        # 2. LEITURA BLINDADA: DS18B20 (Externo)
         if ds_sensor:
-            try: latest_sensor_data["ext_temp"] = f"{ds_sensor.get_temperature():.1f}"
+            try:
+                t_ext = ds_sensor.get_temperature()
+                if is_valid_temp(t_ext, latest_sensor_data["ext_temp"]):
+                    latest_sensor_data["ext_temp"] = f"{t_ext:.1f}"
             except: pass
 
-        # 1. LOGS RAM (Interno/Externo)
+        # 3. LOGS RAM (Interno/Externo)
         v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
         v_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
         if update_thermal_log(c, "hist_int_min_log", v_int, True): updated = True
         if update_thermal_log(c, "hist_int_max_log", v_int, False): updated = True
 
-        # 2. CONTROLE TÉRMICO & LOG RACK (V4.5.5)
+        # 4. CONTROLE TÉRMICO & LOG RACK
         if c.get("fan_node") == "main":
             target_temp = latest_sensor_data["ext_temp"]
             curr_fan_val = int(current_fan_speed * 100)
@@ -197,7 +216,7 @@ def update_sensor_background():
             curr_fan_val = slave_data['fan']
         else: target_temp, curr_fan_val = "--", 0
 
-        # IDENTIFICA QUEM O SR. DEFINIU COMO "Ext" (Externo) - CORREÇÃO AQUI
+        # IDENTIFICA QUEM O SR. DEFINIU COMO "Ext" (Externo)
         val_for_ext = v_main if c['label_main'] == "Ext" else (v_ext if c['label_ext'] == "Ext" else "--")
         if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
         if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
