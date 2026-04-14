@@ -347,8 +347,18 @@ def history_page():
             logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_f, end_f)).fetchall()
             c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
 
-        def safe_t(v): return v if (v is not None and -20 <= v <= 120) else None
-        def safe_h(v): return v if (v is not None and 0 <= v <= 100) else None
+        # Defesas contra strings vazias ("") que o JS interpreta como zero
+        def safe_t(v):
+            try: 
+                vf = float(v)
+                return vf if -20 <= vf <= 120 else None
+            except (ValueError, TypeError): return None
+            
+        def safe_h(v):
+            try: 
+                vf = float(v)
+                return vf if 0 <= vf <= 100 else None
+            except (ValueError, TypeError): return None
 
         return render_template('history.html', 
             logs=logs, start_date=start_d, end_date=end_d, start_time=st_t, end_time=en_t, sort=sort_col, dir=sort_dir,
@@ -524,14 +534,21 @@ def update():
 
 @app.route('/purge_anomaly', methods=['POST'])
 def purge_anomaly():
-    """Anula cirurgicamente um valor exato corrompido sem destruir a linha inteira."""
+    """Anula cirurgicamente um valor exato baseado no sensor, data e hora."""
     try:
+        sensor = request.form.get('sensor')
         bad_val = float(request.form.get('bad_value'))
-        with sqlite3.connect(DB_PATH) as conn:
-            # Varre as colunas térmicas e substitui o valor indesejado por NULL
-            for col in ['int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t']:
-                conn.execute(f"UPDATE telemetry SET {col} = NULL WHERE {col} = ?", (bad_val,))
-            conn.commit()
+        bad_date = request.form.get('bad_date')
+        bad_time = request.form.get('bad_time')
+        
+        # Blindagem contra SQL Injection
+        allowed_sensors = {'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t'}
+        if sensor in allowed_sensors:
+            # O LIKE no SQLite permite fuzilar a anomalia ignorando os segundos exatos
+            target_ts = f"{bad_date} {bad_time}%"
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute(f"UPDATE telemetry SET {sensor} = NULL WHERE {sensor} = ? AND ts LIKE ?", (bad_val, target_ts))
+                conn.commit()
     except Exception as e:
         traceback.print_exc()
     return redirect('/')

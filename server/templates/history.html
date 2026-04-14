@@ -69,10 +69,27 @@
                 <form action="/purge_anomaly" method="POST" class="filter-row">
                     <div>
                         <label style="display:block; font-size:10px; margin-bottom:4px; color:var(--danger); font-weight:bold;">⚠️ ELIMINAR ANOMALIA</label>
-                        <input type="number" step="0.1" name="bad_value" placeholder="Ex: 85.0" required style="border-color: #fadbd8;">
+                        <select name="sensor" required style="border-color: #fadbd8; background: #fff; padding: 8px;">
+                            <option value="int_t">Temp. Interno</option>
+                            <option value="ext_t">Sens. Externo</option>
+                            <option value="m_core_t">CPU Master</option>
+                            <option value="s_core_t">CPU Slave</option>
+                            <option value="s_t">Temp. RACK</option>
+                        </select>
                     </div>
-                    <button type="submit" class="btn-danger">🗑️ EXPURGAR DO BANCO</button>
-                    <span style="font-size: 10px; color: #e74c3c; max-width: 250px; align-self: center;">Anula o pico térmico sem destruir os registos de CPU/RAM.</span>
+                    <div>
+                        <label style="display:block; font-size:10px; margin-bottom:4px;">VALOR CORROMPIDO</label>
+                        <input type="number" step="0.1" name="bad_value" placeholder="Ex: 85.0" required style="border-color: #fadbd8; width: 90px;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:10px; margin-bottom:4px;">DATA</label>
+                        <input type="date" name="bad_date" required style="border-color: #fadbd8;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:10px; margin-bottom:4px;">HORA (Aprox)</label>
+                        <input type="time" name="bad_time" required style="border-color: #fadbd8;">
+                    </div>
+                    <button type="submit" class="btn-danger" style="margin-bottom: 2px;">🗑️ EXPURGAR</button>
                 </form>
             </div>
         </div>
