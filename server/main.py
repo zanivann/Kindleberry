@@ -347,33 +347,44 @@ def history_page():
             logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_f, end_f)).fetchall()
             c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
 
-        # Defesas contra strings vazias ("") que o JS interpreta como zero
-        def safe_t(v):
-            try: 
-                vf = float(v)
-                return vf if -20 <= vf <= 120 else None
-            except (ValueError, TypeError): return None
-            
-        def safe_h(v):
-            try: 
-                vf = float(v)
-                return vf if 0 <= vf <= 100 else None
-            except (ValueError, TypeError): return None
+        # O Filtro de Blindagem de Gráfico
+        def filter_series(key, is_temp=False):
+            result = []
+            last_val = None
+            for r in c_data:
+                v = r[key] if key in r.keys() else None
+                try:
+                    vf = float(v)
+                    if is_temp:
+                        # Ignora se fora dos limites físicos ou se houver um salto absurdo (>10 graus)
+                        if not (-20 <= vf <= 120) or (last_val is not None and abs(vf - last_val) > 10.0):
+                            vf = None
+                    else:
+                        if not (0 <= vf <= 100):
+                            vf = None
+                except (ValueError, TypeError):
+                    vf = None
+                
+                if vf is not None: last_val = vf
+                result.append(vf)
+            return result
 
         return render_template('history.html', 
             logs=logs, start_date=start_d, end_date=end_d, start_time=st_t, end_time=en_t, sort=sort_col, dir=sort_dir,
             c_labels=[r['ts'].split(' ')[1] for r in c_data],
-            c_int_t=[safe_t(r['int_t']) for r in c_data],
-            c_int_h=[safe_h(r['int_h']) for r in c_data],
-            c_ext_t=[safe_t(r['ext_t']) for r in c_data],
-            c_rack_t=[safe_t(r['s_t']) for r in c_data],
-            c_m_core=[safe_t(r['m_core_t']) for r in c_data],
-            c_s_core=[safe_t(r['s_core_t']) for r in c_data],
+            # Passa as séries de dados sanitizadas
+            c_int_t=filter_series('int_t', True),
+            c_int_h=filter_series('int_h', False),
+            c_ext_t=filter_series('ext_t', True),
+            c_rack_t=filter_series('s_t', True),
+            c_m_core=filter_series('m_core_t', True),
+            c_s_core=filter_series('s_core_t', True),
+            # Uso de sistema não sofre saltos físicos, passa direto
             c_m_cpu=[r['m_c'] if 'm_c' in r.keys() else 0 for r in c_data],
             c_m_ram=[r['m_r'] if 'm_r' in r.keys() else 0 for r in c_data],
             c_s_cpu=[r['s_c'] if 's_c' in r.keys() else 0 for r in c_data],
             c_s_ram=[r['s_r'] if 's_r' in r.keys() else 0 for r in c_data],
-            c_fan=[r['s_f'] if 's_f' in r.keys() else 0 for r in c_data],
+            c_fan=filter_series('s_f', False),
             c_net_d=[r['n_d'] if 'n_d' in r.keys() else 0 for r in c_data],
             c_net_u=[r['n_u'] if 'n_u' in r.keys() else 0 for r in c_data],
             c_s_net_d=[r['sn_d'] if 'sn_d' in r.keys() else 0 for r in c_data],
@@ -537,20 +548,19 @@ def purge_anomaly():
     """Anula cirurgicamente um valor exato baseado no sensor, data e hora."""
     try:
         sensor = request.form.get('sensor')
-        bad_val = float(request.form.get('bad_value'))
-        bad_date = request.form.get('bad_date')
-        bad_time = request.form.get('bad_time')
+        val_str = request.form.get('bad_value', '').strip()
+        b_date = request.form.get('bad_date')
+        b_time = request.form.get('bad_time')
         
-        # Blindagem contra SQL Injection
-        allowed_sensors = {'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t'}
-        if sensor in allowed_sensors:
-            # O LIKE no SQLite permite fuzilar a anomalia ignorando os segundos exatos
-            target_ts = f"{bad_date} {bad_time}%"
+        if sensor in {'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t'}:
+            ts_like = f"{b_date} {b_time}%"
             with sqlite3.connect(DB_PATH) as conn:
-                conn.execute(f"UPDATE telemetry SET {sensor} = NULL WHERE {sensor} = ? AND ts LIKE ?", (bad_val, target_ts))
+                if val_str == '--':
+                    conn.execute(f"UPDATE telemetry SET {sensor} = NULL WHERE {sensor} = '--' AND ts LIKE ?", (ts_like,))
+                else:
+                    conn.execute(f"UPDATE telemetry SET {sensor} = NULL WHERE {sensor} = ? AND ts LIKE ?", (float(val_str), ts_like))
                 conn.commit()
-    except Exception as e:
-        traceback.print_exc()
+    except Exception: traceback.print_exc()
     return redirect('/')
 
 @app.route('/')

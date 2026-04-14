@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>📜 Auditoria Master V4.8.1</title>
+    <title>📜 Auditoria Master V4.8.3</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -19,7 +19,7 @@
         .purge-card { background: #fff5f5; padding: 15px; border-radius: 8px; border: 1px solid #fadbd8; border-left: 4px solid var(--danger); flex-grow: 1; }
         .filter-row { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
         
-        input, button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd; }
+        input, button, select { padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd; }
         button[type="submit"] { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; }
         .btn-danger { background: var(--danger) !important; }
 
@@ -46,7 +46,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h3>📜 Auditoria de Telemetria BlackBox V4.8.1</h3>
+            <h3>📜 Auditoria de Telemetria BlackBox V4.8.3</h3>
             <a href="/" class="btn-back">⬅ Voltar ao Painel</a>
         </div>
 
@@ -69,7 +69,7 @@
                 <form action="/purge_anomaly" method="POST" class="filter-row">
                     <div>
                         <label style="display:block; font-size:10px; margin-bottom:4px; color:var(--danger); font-weight:bold;">⚠️ ELIMINAR ANOMALIA</label>
-                        <select name="sensor" required style="border-color: #fadbd8; background: #fff; padding: 8px;">
+                        <select name="sensor" required style="border-color: #fadbd8; background: #fff;">
                             <option value="int_t">Temp. Interno</option>
                             <option value="ext_t">Sens. Externo</option>
                             <option value="m_core_t">CPU Master</option>
@@ -79,7 +79,7 @@
                     </div>
                     <div>
                         <label style="display:block; font-size:10px; margin-bottom:4px;">VALOR CORROMPIDO</label>
-                        <input type="number" step="0.1" name="bad_value" placeholder="Ex: 85.0" required style="border-color: #fadbd8; width: 90px;">
+                        <input type="text" name="bad_value" placeholder="Ex: 0 ou --" required style="border-color: #fadbd8; width: 90px;">
                     </div>
                     <div>
                         <label style="display:block; font-size:10px; margin-bottom:4px;">DATA</label>
@@ -131,12 +131,12 @@
                     {% for log in logs %}
                     <tr>
                         <td style="font-weight:bold; color:var(--primary);">{{ log.ts.split(' ')[1] }}</td>
-                        <td>{{ log.int_t or '--' }}° / {{ log.int_h or '--' }}%</td>
-                        <td><span style="color:var(--accent);">{{ log.ext_t or '--' }}°</span></td>
-                        <td>{{ log.m_core_t or '--' }}°</td>
-                        <td>{{ log.s_core_t or '--' }}°</td>
-                        <td><span class="badge" style="background:#f1f2f6;">{{ log.s_t or '--' }}°</span></td>
-                        <td>{{ log.s_f or '0' }}%</td>
+                        <td>{{ log.int_t if log.int_t is not none else '--' }}° / {{ log.int_h if log.int_h is not none else '--' }}%</td>
+                        <td><span style="color:var(--accent);">{{ log.ext_t if log.ext_t is not none else '--' }}°</span></td>
+                        <td>{{ log.m_core_t if log.m_core_t is not none else '--' }}°</td>
+                        <td>{{ log.s_core_t if log.s_core_t is not none else '--' }}°</td>
+                        <td><span class="badge" style="background:#f1f2f6;">{{ log.s_t if log.s_t is not none else '--' }}°</span></td>
+                        <td>{{ log.s_f if log.s_f is not none else '0' }}%</td>
                         <td>{{ "%.1f"|format(log.n_d or 0) }}↓ / {{ "%.1f"|format(log.n_u or 0) }}↑</td>
                         <td>{{ "%.1f"|format(log.sn_d or 0) }}↓ / {{ "%.1f"|format(log.sn_u or 0) }}↑</td>
                     </tr>
