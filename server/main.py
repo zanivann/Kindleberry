@@ -33,7 +33,7 @@ def get_master_cpu_temp():
     except: pass
     return None
 
-# --- BANCO DE DADOS (BLACKBOX V4.3) ---
+# --- BANCO DE DADOS (BLACKBOX V4.8.0) ---
 def init_db():
     try:
         if not os.path.exists(DATA_DIR): os.makedirs(DATA_DIR, exist_ok=True)
@@ -45,7 +45,6 @@ def init_db():
                 s_t REAL, s_f INTEGER, s_c REAL, s_r REAL,
                 m_c REAL, m_r REAL, n_d REAL, n_u REAL
             )''')
-            # MIGRACAO: Adiciona as colunas que faltam para o Multgráfico
             cols = [('m_core_t','REAL'), ('s_core_t','REAL'), ('sn_d','REAL'), ('sn_u','REAL')]
             for c_n, c_t in cols:
                 try: conn.execute(f'ALTER TABLE telemetry ADD COLUMN {c_n} {c_t}')
@@ -63,10 +62,7 @@ def log_telemetry():
             
         s_online = (time.time() - slave_data["last_seen"] < 60)
         
-        # Pega os valores exatamente como o Kindle/Painel mostram
         v_m_real, v_e_real = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
-        
-        # Sincroniza as labels com as colunas do banco
         db_int = v_m_real if c['label_main'] == "Int" else (v_e_real if c['label_ext'] == "Int" else None)
         db_ext = v_m_real if c['label_main'] == "Ext" else (v_e_real if c['label_ext'] == "Ext" else None)
 
@@ -90,6 +86,40 @@ def log_telemetry():
             conn.commit()
     except: pass
 
+def get_records_from_db():
+    """Consulta os recordes térmicos diretamente do histórico, ignorando anomalias extremas."""
+    records = {
+        "hist_int_min_log": [], "hist_int_max_log": [],
+        "hist_ext_min_log": [], "hist_ext_max_log": [],
+        "hist_rack_min_log": [], "hist_rack_max_log": [],
+        "hist_fan_min_log": [], "hist_fan_max_log": []
+    }
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            def fetch_top(col, order, target_list):
+                val_filter = ">= -20 AND {} <= 120" if col != 's_f' else ">= 0 AND {} <= 100"
+                q = f"SELECT {col}, ts FROM telemetry WHERE {col} IS NOT NULL AND {col} {val_filter.format(col)} ORDER BY {col} {order}, ts DESC LIMIT 3"
+                rows = conn.execute(q).fetchall()
+                for r in rows:
+                    try:
+                        dt_obj = datetime.datetime.strptime(r['ts'], "%Y-%m-%d %H:%M:%S")
+                        dt_str = dt_obj.strftime("%d/%m %H:%M")
+                    except: dt_str = r['ts']
+                    records[target_list].append({"val": round(r[col], 1), "dt": dt_str})
+
+            fetch_top('int_t', 'ASC', 'hist_int_min_log')
+            fetch_top('int_t', 'DESC', 'hist_int_max_log')
+            fetch_top('ext_t', 'ASC', 'hist_ext_min_log')
+            fetch_top('ext_t', 'DESC', 'hist_ext_max_log')
+            fetch_top('s_t', 'ASC', 'hist_rack_min_log')
+            fetch_top('s_t', 'DESC', 'hist_rack_max_log')
+            fetch_top('s_f', 'ASC', 'hist_fan_min_log')
+            fetch_top('s_f', 'DESC', 'hist_fan_max_log')
+    except Exception as e:
+        traceback.print_exc()
+    return records
+
 # --- HARDWARE INIT ---
 try:
     from dht_reader import DHTReader
@@ -110,11 +140,7 @@ def load_config():
         "rotation": 1, "font_size": 120, "city_name": "Sao Paulo", "timezone": "America/Sao_Paulo", 
         "lat": "-23.5505", "lon": "-46.6333", "theme_mode": "auto", "language": "pt_BR", 
         "brightness": 10, "sensor_main": "online", "sensor_ext": "none", "label_main": "Int", 
-        "label_ext": "Ext", "fan_node": "none", "fan_temp_min": 35.0, "fan_temp_max": 50.0,
-        "hist_int_min_log": [], "hist_int_max_log": [],
-        "hist_ext_min_log": [], "hist_ext_max_log": [],
-        "hist_rack_min_log": [], "hist_rack_max_log": [],
-        "hist_fan_min_log": [], "hist_fan_max_log": []
+        "label_ext": "Ext", "fan_node": "none", "fan_temp_min": 35.0, "fan_temp_max": 50.0
     }
     try:
         if not os.path.exists(path): return default
@@ -123,8 +149,10 @@ def load_config():
     except: return default
 
 def save_config(data):
+    # Remove as chaves injetadas pela UI antes de salvar no disco para evitar poluição
+    clean_data = {k: v for k, v in data.items() if not k.startswith("hist_")}
     path = os.path.join(BASE_DIR, 'config.json')
-    with open(path, 'w') as f: json.dump(data, f, indent=4)
+    with open(path, 'w') as f: json.dump(clean_data, f, indent=4)
 
 # --- AUXILIARES DE DADOS ---
 def get_sensor_value(sensor_key):
@@ -134,25 +162,6 @@ def get_sensor_value(sensor_key):
     if sensor_key == "slave": 
         return f"{slave_data['temp']:.1f}" if (time.time() - slave_data['last_seen'] < 60) else "--"
     return "--"
-
-def update_thermal_log(config, log_key, val, is_min):
-    if val == "--" or val is None: return False
-    log = config.get(log_key, [])
-    try: 
-        val_f = float(val)
-    except: 
-        return False
-        
-    # FILTRO DE HARDWARE GLITCH: Ignora valores fisicamente impossíveis
-    if val_f < -20.0 or val_f > 120.0:
-        return False 
-
-    current_record = log[0]['val'] if log else (999.0 if is_min else -999.0)
-    if (is_min and val_f < current_record) or (not is_min and val_f > current_record):
-        now_str = datetime.datetime.now().strftime("%d/%m %H:%M")
-        log.insert(0, {"val": round(val_f, 1), "dt": now_str}); config[log_key] = log[:3]
-        return True
-    return False
 
 def get_weather_data(lat, lon):
     global temp_online, cond_online
@@ -168,7 +177,6 @@ def update_sensor_background():
     init_db()
     last_weather_check = 0
     
-    # FILTRO CIRÚRGICO DE HARDWARE
     def is_valid_temp(new_t, old_t_str):
         if new_t is None or not (-20 <= new_t <= 120): return False
         if old_t_str != "--":
@@ -179,11 +187,11 @@ def update_sensor_background():
 
     while True:
         update_net_stats()
-        c = load_config(); updated = False
+        c = load_config()
         if time.time() - last_weather_check > 900:
             get_weather_data(c['lat'], c['lon']); last_weather_check = time.time()
         
-        # 1. LEITURA BLINDADA: DHT22 (Interno)
+        # 1. LEITURA DHT22 (Interno)
         if sensor_client:
             try:
                 h, t_val, _ = sensor_client.read_data()
@@ -193,7 +201,7 @@ def update_sensor_background():
                     latest_sensor_data["hum"] = f"{h:.1f}"
             except: pass
             
-        # 2. LEITURA BLINDADA: DS18B20 (Externo)
+        # 2. LEITURA DS18B20 (Externo)
         if ds_sensor:
             try:
                 t_ext = ds_sensor.get_temperature()
@@ -201,45 +209,24 @@ def update_sensor_background():
                     latest_sensor_data["ext_temp"] = f"{t_ext:.1f}"
             except: pass
 
-        # 3. LOGS RAM (Interno/Externo)
-        v_main, v_ext = get_sensor_value(c['sensor_main']), get_sensor_value(c['sensor_ext'])
-        v_int = v_main if c['label_main'] == "Int" else (v_ext if c['label_ext'] == "Int" else "--")
-        if update_thermal_log(c, "hist_int_min_log", v_int, True): updated = True
-        if update_thermal_log(c, "hist_int_max_log", v_int, False): updated = True
-
-        # 4. CONTROLE TÉRMICO & LOG RACK
+        # 3. CONTROLE TÉRMICO
         if c.get("fan_node") == "main":
             target_temp = latest_sensor_data["ext_temp"]
-            curr_fan_val = int(current_fan_speed * 100)
         elif c.get("fan_node") == "slave":
             target_temp = f"{slave_data['temp']:.1f}" if (time.time()-slave_data['last_seen'] < 60) else "--"
-            curr_fan_val = slave_data['fan']
-        else: target_temp, curr_fan_val = "--", 0
+        else: target_temp = "--"
 
-        # IDENTIFICA QUEM O SR. DEFINIU COMO "Ext" (Externo)
-        val_for_ext = v_main if c['label_main'] == "Ext" else (v_ext if c['label_ext'] == "Ext" else "--")
-        if update_thermal_log(c, "hist_ext_min_log", val_for_ext, True): updated = True
-        if update_thermal_log(c, "hist_ext_max_log", val_for_ext, False): updated = True
-
-        if target_temp != "--":
-            update_thermal_log(c, "hist_rack_max_log", target_temp, False)
-            update_thermal_log(c, "hist_fan_max_log", curr_fan_val, False)
-            update_thermal_log(c, "hist_fan_min_log", curr_fan_val, True)
-
-            # Controle físico se o Master for o eleito
-            if fan and c.get("fan_node") == "main":
-                try:
-                    tv, tmin, tmax = float(target_temp), float(c["fan_temp_min"]), float(c["fan_temp_max"])
-                    limit_off = tmin - 10.0
-                    if tv <= limit_off: speed = 0.0
-                    elif tv <= tmin: speed = 0.2
-                    else: speed = min(1.0, max(0.2, 0.2 + (0.8 * ((tv - tmin) / (tmax - tmin)))))
-                    fan.value = speed; current_fan_speed = speed
-                except: pass
+        if target_temp != "--" and fan and c.get("fan_node") == "main":
+            try:
+                tv, tmin, tmax = float(target_temp), float(c["fan_temp_min"]), float(c["fan_temp_max"])
+                limit_off = tmin - 10.0
+                if tv <= limit_off: speed = 0.0
+                elif tv <= tmin: speed = 0.2
+                else: speed = min(1.0, max(0.2, 0.2 + (0.8 * ((tv - tmin) / (tmax - tmin)))))
+                fan.value = speed; current_fan_speed = speed
+            except: pass
         
-        if updated: save_config(c)
         log_telemetry(); time.sleep(10)
-
 
 app = Flask(__name__)
 ICONS_DIR = os.path.join(BASE_DIR, "icons")
@@ -309,11 +296,9 @@ def report():
             "net_down": data.get("net_down", 0.0), "net_up": data.get("net_up", 0.0),
             "last_seen": time.time()
         })
-        # Sincroniza o histórico de rede para o dashboard.png
         slave_data["net_history"].append((data.get("net_down", 0), data.get("net_up", 0)))
         if len(slave_data["net_history"]) > MAX_HISTORY: slave_data["net_history"].pop(0)
         
-        # Envia as ordens do INDEX para o AGENTE
         c = load_config()
         return jsonify({
             "status": "ok",
@@ -332,13 +317,16 @@ def toggle_status():
 
 @app.route('/reset_history', methods=['POST'])
 def reset_history():
-    c = load_config()
-    for k in ["hist_int_min_log", "hist_int_max_log", "hist_ext_min_log", "hist_ext_max_log", "hist_fan_min_log", "hist_fan_max_log", "hist_rack_min_log", "hist_rack_max_log"]: c[k] = []
-    save_config(c); return redirect('/')
+    # Agora expurga glitches residuais do banco em vez de limpar um JSON inútil
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("DELETE FROM telemetry WHERE int_t < -20 OR int_t > 120 OR ext_t < -20 OR ext_t > 120 OR s_t < -20 OR s_t > 120")
+            conn.commit()
+    except: pass
+    return redirect('/')
 
 @app.route('/history')
 def history_page():
-    # 1. Captura de parâmetros da URL
     start_d = request.args.get('start_date', datetime.datetime.now().strftime('%Y-%m-%d'))
     end_d = request.args.get('end_date', datetime.datetime.now().strftime('%Y-%m-%d'))
     st_t = request.args.get('start_time', '00:00')
@@ -346,12 +334,10 @@ def history_page():
     sort_col = request.args.get('sort', 'ts')
     sort_dir = request.args.get('dir', 'DESC').upper()
     
-    # 2. Whitelist de colunas para ordenação
     allowed = ['ts', 'int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t', 's_f', 'm_c', 's_c', 'n_d']
     if sort_col not in allowed: sort_col = 'ts'
     if sort_dir not in ['ASC', 'DESC']: sort_dir = 'DESC'
     
-    # 3. Definição do período de busca
     start_f = f"{start_d} {st_t}:00"
     end_f = f"{end_d} {en_t}:59"
 
@@ -361,7 +347,6 @@ def history_page():
             logs = conn.execute(f"SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY {sort_col} {sort_dir}", (start_f, end_f)).fetchall()
             c_data = conn.execute("SELECT * FROM telemetry WHERE ts BETWEEN ? AND ? ORDER BY ts ASC", (start_f, end_f)).fetchall()
 
-        # 4. Retorno com mapeamento defensivo (evita KeyError se a coluna não existir no DB)
         def safe_t(v): return v if (v is not None and -20 <= v <= 120) else None
         def safe_h(v): return v if (v is not None and 0 <= v <= 100) else None
 
@@ -374,8 +359,6 @@ def history_page():
             c_rack_t=[safe_t(r['s_t']) for r in c_data],
             c_m_core=[safe_t(r['m_core_t']) for r in c_data],
             c_s_core=[safe_t(r['s_core_t']) for r in c_data],
-            
-            # CPU, RAM, FAN e NET não sofrem falhas de física, podem passar direto
             c_m_cpu=[r['m_c'] if 'm_c' in r.keys() else 0 for r in c_data],
             c_m_ram=[r['m_r'] if 'm_r' in r.keys() else 0 for r in c_data],
             c_s_cpu=[r['s_c'] if 's_c' in r.keys() else 0 for r in c_data],
@@ -389,6 +372,7 @@ def history_page():
     except Exception as e:
         traceback.print_exc()
         return f"Erro na telemetria: {e}", 500
+
 @app.route('/api/stats')
 def api_stats():
     conf = load_config(); is_s_act = (time.time() - slave_data["last_seen"] < 60)
@@ -429,11 +413,9 @@ def serve_dashboard():
         f_city = ImageFont.truetype(f_p, 90); f_med = ImageFont.truetype(f_p, 45); f_tiny = ImageFont.truetype(f_p, 24)
         f_label = ImageFont.truetype(f_p, 35); f_graph = ImageFont.truetype(f_p, 32)
 
-        # 1. PRIMEIRO: Buscar os dados externos que a função precisa
         t_api, cond_api, icon_url = get_weather_data(conf['lat'], conf['lon'])
         moon_icon, moon_key = get_moon_phase()
 
-        # 2. SEGUNDO: Definir a função
         def get_display_val(s):
             if s == "online": return t_api, None, cond_api
             if s == "dht": return latest_sensor_data["temp"], latest_sensor_data["hum"], "Interno"
@@ -441,11 +423,9 @@ def serve_dashboard():
             if s == "slave": return (f"{slave_data['temp']:.1f}" if time.time()-slave_data['last_seen']<60 else "--"), None, "Slave"
             return "--", None, "--"
 
-        # 3. TERCEIRO: Chamar a função (Agora ela existe e tem os dados)
         v1, h1, st1 = get_display_val(conf['sensor_main'])
         v2, h2, st2 = get_display_val(conf['sensor_ext'])
         
-
         def paste_icon(icon_file, pos, size, url=None):
             p = os.path.join(ICONS_DIR, f"{icon_file}.png")
             if not os.path.exists(p) and url:
@@ -462,7 +442,6 @@ def serve_dashboard():
                         icon_rgba = Image.merge("RGBA", (ImageOps.invert(r_ch), ImageOps.invert(g_ch), ImageOps.invert(b_ch), a_ch))
                     img.paste(icon_rgba.convert("L"), pos, mask=icon_rgba.split()[3])
 
-        # --- UI ESQUERDA ---
         draw.text((60, 40), now.strftime("%H:%M"), font=f_huge, fill=FG)
         draw.text((60, 190), f"{t(f'day_{now.weekday()}')}, {now.strftime('%d/%m')}", font=f_med, fill=FG)
         draw.text((60, 280), conf.get('city_name', 'Dashboard'), font=f_city, fill=FG)
@@ -486,7 +465,6 @@ def serve_dashboard():
             icon_name = icon_url.split('/')[-1].replace('.png', '')
             paste_icon(icon_name, (60, ptr), (180, 180), icon_url)
 
-        # --- UI DIREITA ---
         draw.line((724, 50, 724, 1022), fill=FG, width=4); cx = 1086
         is_s_act = (time.time() - slave_data["last_seen"] < 60)
         rack_t, fan_p = (f"{slave_data['temp']:.1f}", str(slave_data['fan'])) if (conf.get("fan_node") == "slave" and is_s_act) else (latest_sensor_data.get('ext_temp', '--'), str(int(current_fan_speed * 100)))
@@ -528,12 +506,29 @@ def update():
     fields = ['city_name', 'lat', 'lon', 'timezone', 'language', 'theme_mode', 'sensor_main', 'sensor_ext', 'label_main', 'label_ext', 'fan_node']
     for k in fields:
         if k in request.form: c[k] = request.form[k]
-    c.update({"font_size": int(request.form.get('font_size', 120)), "brightness": int(request.form.get('brightness', 10)), "rotation": int(request.form.get('rotation', 1)), "fan_temp_min": float(request.form.get('fan_temp_min', 35.0)), "fan_temp_max": float(request.form.get('fan_temp_max', 50.0))})
-    save_config(c); return redirect('/')
+        
+    int_fields = ['font_size', 'brightness', 'rotation']
+    for k in int_fields:
+        if k in request.form:
+            try: c[k] = int(request.form[k])
+            except ValueError: pass
+
+    float_fields = ['fan_temp_min', 'fan_temp_max']
+    for k in float_fields:
+        if k in request.form:
+            try: c[k] = float(request.form[k])
+            except ValueError: pass
+
+    save_config(c)
+    return redirect('/')
 
 @app.route('/')
 def index(): 
-    return render_template('index.html', config=load_config(), tr=load_translation_file(), dash_active=DASH_ACTIVE)
+    conf = load_config()
+    # Injeta os records extraídos diretamente do Banco de Dados no objeto config para a UI
+    db_records = get_records_from_db()
+    conf.update(db_records)
+    return render_template('index.html', config=conf, tr=load_translation_file(), dash_active=DASH_ACTIVE)
 
 if __name__ == '__main__':
     threading.Thread(target=update_sensor_background, daemon=True).start()
