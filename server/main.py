@@ -522,6 +522,20 @@ def update():
     save_config(c)
     return redirect('/')
 
+@app.route('/purge_anomaly', methods=['POST'])
+def purge_anomaly():
+    """Anula cirurgicamente um valor exato corrompido sem destruir a linha inteira."""
+    try:
+        bad_val = float(request.form.get('bad_value'))
+        with sqlite3.connect(DB_PATH) as conn:
+            # Varre as colunas térmicas e substitui o valor indesejado por NULL
+            for col in ['int_t', 'ext_t', 's_t', 'm_core_t', 's_core_t']:
+                conn.execute(f"UPDATE telemetry SET {col} = NULL WHERE {col} = ?", (bad_val,))
+            conn.commit()
+    except Exception as e:
+        traceback.print_exc()
+    return redirect('/')
+
 @app.route('/')
 def index(): 
     conf = load_config()
