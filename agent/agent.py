@@ -94,11 +94,17 @@ print(f"Agente V4.7.1 iniciado. Pino Ativo: {active_pin}")
 last_net_io = psutil.net_io_counters()
 last_net_time = time.time()
 
+last_valid_temp = 0.0
+
 try:
     while True:
-        temp_rack = get_rack_temp()
+        raw_temp = get_rack_temp()
+        if raw_temp is not None and raw_temp > 0.0:
+            last_valid_temp = raw_temp
+            
+        temp_rack = last_valid_temp
         temp_core = get_core_temp()
-        report_temp_rack = temp_rack if temp_rack is not None else 0.0
+        report_temp_rack = raw_temp if raw_temp is not None else 0.0
 
         now = time.time()
         io_now = psutil.net_io_counters()
@@ -120,14 +126,14 @@ try:
         }
         
         try:
-            r = requests.post(MASTER_URL, json=payload, timeout=2)
+            r = requests.post(MASTER_URL, json=payload, timeout=5)
             if r.status_code == 200:
                 conf = r.json()
                 fan_temp_min = float(conf.get('fan_temp_min', 35.0))
                 fan_temp_max = float(conf.get('fan_temp_max', 50.0))
                 node_permission = conf.get('fan_node', 'none')
         except Exception as e:
-            print(f"✗ Falha na comunicação: {e}"); node_permission = "none"
+            print(f"✗ Falha na comunicação: {e}")
 
         # Controle local baseado na permissão do Master
         if node_permission == "slave":
